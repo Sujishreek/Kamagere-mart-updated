@@ -1,0 +1,164 @@
+<style>
+/* =====================================================================
+   Kamagere Mart – animation layer (loaded AFTER Stylesheet.html)
+   Pure CSS keyframes; AnimationScript.html adds the classes below.
+   Everything is switched off for people who prefer reduced motion.
+   ===================================================================== */
+
+:root {
+  --km-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --km-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ---------- splash / loading screen ---------- */
+.splash-logo { animation: km-spin 1.8s linear infinite; }
+.splash-spinner { animation: km-spin 0.9s linear infinite; }
+.splash-bar {
+  width: min(180px, 46vw);
+  height: 5px;
+  border-radius: 999px;
+  background: #d1fae5;
+  overflow: hidden;
+}
+.splash-bar::after {
+  content: "";
+  display: block;
+  height: 100%;
+  width: 40%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #16a34a, #4ade80);
+  animation: km-bar 1.2s ease-in-out infinite;
+}
+.splash.hide { transform: scale(1.04); transition: opacity 0.5s ease, visibility 0.5s ease, transform 0.6s var(--km-ease); }
+
+@keyframes km-logo-in { from { opacity: 0; transform: scale(0.6) rotate(-6deg); } to { opacity: 1; transform: none; } }
+@keyframes km-spin { to { transform: rotate(360deg); } }
+@keyframes km-bar { 0% { transform: translateX(-110%); } 100% { transform: translateX(260%); } }
+
+/* ---------- header & bottom navigation ---------- */
+.topbar { animation: km-drop 0.6s var(--km-ease) both; }
+.app-nav-link { transition: transform 0.25s var(--km-spring), color 0.2s ease, background-color 0.2s ease; }
+.app-nav-link:active { transform: scale(0.9); }
+.app-nav-link.active { animation: km-pop 0.45s var(--km-spring); }
+@keyframes km-drop { from { opacity: 0; transform: translateY(-100%); } to { opacity: 1; transform: none; } }
+@keyframes km-pop { 0% { transform: scale(0.8); } 60% { transform: scale(1.12); } 100% { transform: scale(1); } }
+
+/* ---------- page transition: content slides up when the route changes ---------- */
+.km-page-enter { animation: km-page 0.5s var(--km-ease) both; }
+@keyframes km-page { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+
+/* ---------- scroll reveal (cards fade up one after the other) ---------- */
+.km-pre { opacity: 0; }
+.km-anim { animation: km-reveal 0.65s var(--km-ease) var(--km-delay, 0ms) backwards; }
+@keyframes km-reveal {
+  from { opacity: 0; transform: translateY(26px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ---------- hero ---------- */
+.delivery-banner-bg { animation: km-float 6s ease-in-out infinite; will-change: transform; }
+.delivery-banner h1 { animation: km-title-in 0.9s 0.2s var(--km-spring) backwards; }
+.hero .pill { animation: km-pulse-soft 2.8s ease-in-out infinite; }
+.stat-box { transition: transform 0.3s var(--km-spring), box-shadow 0.3s ease; }
+.stat-box:hover { transform: translateY(-4px) scale(1.03); box-shadow: 0 12px 26px rgba(22, 163, 74, 0.16); }
+@keyframes km-float { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-9px) rotate(1deg); } }
+@keyframes km-title-in { from { opacity: 0; transform: translateY(18px) scale(0.92); letter-spacing: 0.08em; } to { opacity: 1; transform: none; } }
+@keyframes km-pulse-soft { 0%, 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.32); } 50% { box-shadow: 0 0 0 9px rgba(22, 163, 74, 0); } }
+
+/* ---------- categories & products ---------- */
+.category-card { transition: transform 0.3s var(--km-spring), box-shadow 0.3s ease; }
+.category-card:hover .category-card-image img,
+.product-card:hover .product-image img { transform: scale(1.07); }
+.category-card-image img,
+.product-image img { transition: transform 0.45s var(--km-ease); }
+.category-card:active { transform: scale(0.94); }
+.sold-out-ribbon { animation: km-pulse-soft 2.4s ease-in-out infinite; }
+.chip { transition: transform 0.2s var(--km-spring), background-color 0.2s ease; }
+.chip:active { transform: scale(0.92); }
+
+/* ---------- buttons: ripple + press ---------- */
+.km-ripple-host { position: relative; overflow: hidden; }
+.km-ripple {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.55);
+  transform: scale(0);
+  animation: km-ripple 0.6s ease-out forwards;
+}
+.outline-btn .km-ripple, .secondary-btn .km-ripple { background: rgba(22, 163, 74, 0.25); }
+@keyframes km-ripple { to { transform: scale(4); opacity: 0; } }
+.primary-btn, .outline-btn, .secondary-btn, .add-cart-btn, .buy-now-btn, .danger-btn {
+  transition: transform 0.2s var(--km-spring), box-shadow 0.25s ease, background-color 0.2s ease, color 0.2s ease;
+}
+.primary-btn:hover, .add-cart-btn:hover, .buy-now-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(22, 163, 74, 0.28); }
+.primary-btn:active, .outline-btn:active, .secondary-btn:active, .add-cart-btn:active, .buy-now-btn:active, .danger-btn:active { transform: scale(0.95); }
+
+/* ---------- add-to-cart flight + cart badge bump ---------- */
+.km-fly {
+  position: fixed;
+  z-index: 2000;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #fff center / cover no-repeat;
+  border: 3px solid #16a34a;
+  box-shadow: 0 8px 22px rgba(22, 163, 74, 0.45);
+  pointer-events: none;
+}
+.km-bump { animation: km-bump 0.5s var(--km-spring); }
+@keyframes km-bump { 0% { transform: scale(1); } 35% { transform: scale(1.55); } 100% { transform: scale(1); } }
+.qty-controls { transition: transform 0.2s var(--km-spring); }
+.km-qty-pop { animation: km-pop 0.35s var(--km-spring); }
+
+/* ---------- toast ---------- */
+.toast { transition: opacity 0.25s ease, transform 0.45s var(--km-spring); transform: translateY(24px) scale(0.92); }
+.toast.show { transform: translateY(0) scale(1); }
+
+/* ---------- modals ---------- */
+.registration-modal-backdrop, .language-modal-backdrop { animation: km-fade 0.25s ease both; }
+.registration-modal { animation: km-modal 0.45s var(--km-spring) both; }
+.order-success-modal { animation: km-modal 0.5s var(--km-spring) both; }
+.success-check { animation: km-check 0.7s 0.15s var(--km-spring) both; }
+.success-check circle, .success-check path { stroke-dasharray: 120; stroke-dashoffset: 120; animation: km-draw 0.8s 0.3s ease forwards; }
+@keyframes km-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes km-modal { from { opacity: 0; transform: translateY(30px) scale(0.9); } to { opacity: 1; transform: none; } }
+@keyframes km-check { from { transform: scale(0.2) rotate(-40deg); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes km-draw { to { stroke-dashoffset: 0; } }
+
+/* ---------- order tracking ---------- */
+.tracking-step-marker { transition: transform 0.3s var(--km-spring), background-color 0.3s ease; }
+.tracking-step.active .tracking-step-marker, .tracking-step.current .tracking-step-marker { animation: km-pulse-soft 1.8s ease-in-out infinite; }
+
+/* ---------- loading placeholders ("Loading…" cards) ---------- */
+.km-loading { position: relative; overflow: hidden; }
+.km-loading-logo {
+  display: block;
+  width: min(88px, 24vw);
+  height: auto;
+  margin: 0 auto 12px;
+  object-fit: contain;
+  animation: km-spin 1.8s linear infinite;
+}
+.km-loading-status { display: inline-flex; align-items: center; vertical-align: middle; }
+.km-loading-status .km-loading-logo {
+  width: 20px;
+  margin: 0 8px 0 0;
+}
+.km-loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.65) 50%, transparent 80%);
+  transform: translateX(-100%);
+  animation: km-shimmer 1.3s infinite;
+}
+@keyframes km-shimmer { to { transform: translateX(100%); } }
+
+/* ---------- accessibility ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
+  .km-pre { opacity: 1 !important; }
+}
+</style>

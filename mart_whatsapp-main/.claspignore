@@ -1,0 +1,6 @@
+**/dist/**
+build-netlify.mjs
+netlify.toml
+netlify-ready/**
+tests/**
+*.md

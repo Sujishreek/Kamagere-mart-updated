@@ -1,0 +1,82 @@
+<script>
+window.KM_DATA = {
+  categories: [
+    "All",
+    "Fresh Items",
+    "Atta & Rice",
+    "Dairy & Eggs",
+    "Cooking Essentials",
+    "Snacks & Biscuits",
+    "Household"
+  ],
+
+  categoryGroups: [
+    {
+      id: "Fresh Items",
+      name: "Fresh Items",
+      subtitle: "Fruits, vegetables & meat",
+      image: "images/categories/fresh-items.png",
+      subcategories: [
+        { id: "Fruits", name: "Fruits", image: "images/categories/fruits.jpg" },
+        { id: "Vegetables", name: "Vegetables", image: "images/categories/vegetables.jpg" },
+        { id: "Meat", name: "Meat", image: "images/categories/meat.jpg" }
+      ]
+    },
+    {
+      id: "Atta & Rice",
+      name: "Atta & Rice",
+      subtitle: "Flour, rice & grains",
+      image: "images/categories/atta-rice.png",
+      subcategories: [
+        { id: "Atta & Rice", name: "Atta & Rice", image: "images/categories/atta-rice.png" }
+      ]
+    },
+    {
+      id: "Dairy & Eggs",
+      name: "Dairy & Eggs",
+      subtitle: "Milk, butter, curd & eggs",
+      image: "images/categories/dairy-eggs.jpg",
+      subcategories: [
+        { id: "Dairy", name: "Dairy", image: "images/categories/dairy-eggs.jpg" }
+      ]
+    },
+    {
+      id: "Cooking Essentials",
+      name: "Cooking Essentials",
+      subtitle: "Oil, salt & daily staples",
+      image: "images/categories/cooking-essentials.jpg",
+      subcategories: [
+        { id: "Staples", name: "Staples", image: "images/categories/cooking-essentials.jpg" },
+        { id: "Cooking Oil", name: "Cooking Oil", image: "images/categories/cooking-essentials.jpg" }
+      ]
+    },
+    {
+      id: "Snacks & Biscuits",
+      name: "Snacks & Biscuits",
+      subtitle: "Biscuits, noodles & munchies",
+      image: "images/categories/snacks-biscuits.png",
+      subcategories: [
+        { id: "Snacks", name: "Snacks", image: "images/categories/snacks-biscuits.png" }
+      ]
+    },
+    {
+      id: "Household",
+      name: "Household",
+      subtitle: "Cleaning & home essentials",
+      image: "images/categories/household.jpg",
+      subcategories: [
+        { id: "Household", name: "Household", image: "images/categories/household.jpg" }
+      ]
+    }
+  ],
+
+  categoryMap: {
+    "Fresh Items": ["Fruits", "Vegetables", "Meat"],
+    "Atta & Rice": ["Atta & Rice"],
+    "Dairy & Eggs": ["Dairy"],
+    "Cooking Essentials": ["Staples", "Cooking Oil"],
+    "Snacks & Biscuits": ["Snacks"],
+    "Household": ["Household"]
+  }
+};
+</script>

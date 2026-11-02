@@ -1,0 +1,225 @@
+<script>
+/**
+ * Kamagere Mart – animation behaviour (loaded AFTER AppScript.html).
+ * It only adds / removes CSS classes defined in AnimationStyles.html and never
+ * touches the store's own logic, so it can be deleted without breaking anything.
+ */
+(function () {
+  'use strict';
+
+  function addLoadingLogo(element, isCard) {
+    if (element.querySelector('.km-loading-logo')) return;
+    var logo = document.createElement('img');
+    logo.className = 'km-loading-logo';
+    logo.alt = '';
+    logo.setAttribute('aria-hidden', 'true');
+    logo.src = window.kmImage
+      ? window.kmImage('images/shara-technovate-logo.png')
+      : 'images/shara-technovate-logo.png';
+    element.classList.add(isCard ? 'km-loading' : 'km-loading-status');
+    element.insertBefore(logo, element.firstChild);
+  }
+
+  function updateLoadingIndicator(element) {
+    if (!element || !element.textContent) return;
+    var text = element.textContent.trim();
+    var card = element.matches('.card') ? element : element.closest('.card');
+    if (card && /^Loading\b/i.test(card.textContent.trim())) {
+      addLoadingLogo(card, true);
+      return;
+    }
+
+    var isLoading = /^(Loading|Saving|Getting|Checking)\b/i.test(text);
+    if (isLoading) {
+      addLoadingLogo(element, false);
+    } else if (element.classList.contains('km-loading-status')) {
+      element.classList.remove('km-loading-status');
+      var logo = element.querySelector('.km-loading-logo');
+      if (logo) logo.remove();
+    }
+  }
+
+  function inspectLoadingNode(node) {
+    if (node.nodeType === 1) {
+      updateLoadingIndicator(node);
+      node.querySelectorAll('p, small, [role="status"], .card').forEach(updateLoadingIndicator);
+    } else if (node.nodeType === 3) {
+      updateLoadingIndicator(node.parentElement);
+    }
+  }
+
+  new MutationObserver(function (mutations) {
+    mutations.forEach(function (mutation) {
+      if (mutation.type === 'characterData') inspectLoadingNode(mutation.target);
+      else mutation.addedNodes.forEach(inspectLoadingNode);
+    });
+  }).observe(document.documentElement, { childList: true, characterData: true, subtree: true });
+
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduce) return;
+
+  var REVEAL = [
+    '.product-card', '.category-card', '.subcategory-card', '.order-card', '.stat-box',
+    '.summary-box', '.empty-state', '.section-heading', '.profile-box', '.auth-panel',
+    '.admin-products > *', '#page-content > .card'
+  ].join(',');
+
+  // ------------------------------------------------ 1. scroll-reveal cards
+  var io = null;
+  if ('IntersectionObserver' in window) {
+    io = new IntersectionObserver(function (entries) {
+      var shown = 0;
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        var el = entry.target;
+        io.unobserve(el);
+        el.style.setProperty('--km-delay', Math.min(shown, 8) * 55 + 'ms');
+        shown++;
+        el.classList.remove('km-pre');
+        el.classList.add('km-anim');
+        el.addEventListener('animationend', function done() {
+          el.classList.remove('km-anim');
+          el.style.removeProperty('--km-delay');
+          el.removeEventListener('animationend', done);
+        });
+      });
+    }, { threshold: 0.08, rootMargin: '0px 0px -30px 0px' });
+  }
+
+  // After a click / keystroke the store re-draws the grid (add to cart, search…).
+  // Those redraws must not replay the entrance animation.
+  var quietUntil = 0;
+  ['click', 'input', 'keydown'].forEach(function (name) {
+    document.addEventListener(name, function () { quietUntil = Date.now() + 900; }, true);
+  });
+
+  function prepare(root, quiet) {
+    if (!io) return;
+    var nodes = root.querySelectorAll(REVEAL);
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      if (el.__kmSeen) continue;
+      el.__kmSeen = true;
+      if (quiet) continue;
+      el.classList.add('km-pre');
+      io.observe(el);
+    }
+  }
+
+  // safety net: never leave anything invisible if the observer does not fire
+  function revealStragglers() {
+    var left = document.querySelectorAll('.km-pre');
+    for (var i = 0; i < left.length; i++) left[i].classList.remove('km-pre');
+  }
+
+  // ---------------------------------------- 2. page transition + new content
+  var scheduled = false;
+  var lastRoute = null;
+  function onDomChange() {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(function () {
+      scheduled = false;
+      var page = document.getElementById('page-content');
+      if (!page) return;
+      var route = window.location.hash || '#home';
+      var routeChanged = route !== lastRoute;
+      if (routeChanged) {
+        lastRoute = route;
+        page.classList.remove('km-page-enter');
+        void page.offsetWidth; // restart the animation
+        page.classList.add('km-page-enter');
+      }
+      prepare(page, !routeChanged && Date.now() < quietUntil);
+      clearTimeout(onDomChange.t);
+      onDomChange.t = setTimeout(revealStragglers, 2500);
+    });
+  }
+
+  function startObserving() {
+    var app = document.getElementById('app');
+    if (!app) return;
+    new MutationObserver(onDomChange).observe(app, { childList: true, subtree: true });
+    onDomChange();
+  }
+
+  // ------------------------------------------------------- 3. button ripple
+  var RIPPLE = '.primary-btn,.outline-btn,.secondary-btn,.add-cart-btn,.buy-now-btn,.danger-btn';
+  document.addEventListener('pointerdown', function (event) {
+    var btn = event.target.closest && event.target.closest(RIPPLE);
+    if (!btn || btn.disabled) return;
+    btn.classList.add('km-ripple-host');
+    var rect = btn.getBoundingClientRect();
+    var size = Math.max(rect.width, rect.height);
+    var dot = document.createElement('span');
+    dot.className = 'km-ripple';
+    dot.style.width = dot.style.height = size + 'px';
+    dot.style.left = (event.clientX - rect.left - size / 2) + 'px';
+    dot.style.top = (event.clientY - rect.top - size / 2) + 'px';
+    btn.appendChild(dot);
+    setTimeout(function () { if (dot.parentNode) dot.parentNode.removeChild(dot); }, 650);
+  }, { passive: true });
+
+  // ---------------------------------------- 4. fly-to-cart + badge bump
+  function cartTarget() {
+    var candidates = [document.getElementById('header-cart-badge'), document.getElementById('bottom-cart-badge')];
+    for (var i = 0; i < candidates.length; i++) {
+      var el = candidates[i];
+      if (el && el.getBoundingClientRect().width > 0) return el;
+    }
+    return null;
+  }
+
+  function bump(el) {
+    if (!el) return;
+    el.classList.remove('km-bump');
+    void el.offsetWidth;
+    el.classList.add('km-bump');
+  }
+
+  document.addEventListener('click', function (event) {
+    var btn = event.target.closest && event.target.closest('[data-action="add-cart"]');
+    if (!btn) {
+      var qty = event.target.closest && event.target.closest('[data-action="inc-qty"],[data-action="dec-qty"]');
+      if (qty) {
+        setTimeout(function () {
+          var v = document.querySelector('.cart-item .product-quantity, .qty-controls span');
+          if (v) { v.classList.remove('km-qty-pop'); void v.offsetWidth; v.classList.add('km-qty-pop'); }
+          bump(cartTarget());
+        }, 30);
+      }
+      return;
+    }
+    var card = btn.closest('.product-card');
+    var img = card && card.querySelector('.product-image img');
+    var from = btn.getBoundingClientRect();
+    var target = cartTarget();
+    if (!target || !img || !from.width || !target.animate) {
+      setTimeout(function () { bump(cartTarget()); }, 30);
+      return;
+    }
+    var to = target.getBoundingClientRect();
+    var ghost = document.createElement('div');
+    ghost.className = 'km-fly';
+    ghost.style.backgroundImage = 'url("' + img.currentSrc.replace(/"/g, '%22') + '")';
+    ghost.style.left = (from.left + from.width / 2 - 23) + 'px';
+    ghost.style.top = (from.top + from.height / 2 - 23) + 'px';
+    document.body.appendChild(ghost);
+    var dx = to.left + to.width / 2 - (from.left + from.width / 2);
+    var dy = to.top + to.height / 2 - (from.top + from.height / 2);
+    var flight = ghost.animate([
+      { transform: 'translate(0,0) scale(1)', opacity: 1 },
+      { transform: 'translate(' + dx * 0.55 + 'px,' + (dy * 0.55 - 70) + 'px) scale(0.8)', opacity: 1, offset: 0.55 },
+      { transform: 'translate(' + dx + 'px,' + dy + 'px) scale(0.2)', opacity: 0.35 }
+    ], { duration: 750, easing: 'cubic-bezier(0.45, 0, 0.2, 1)' });
+    flight.onfinish = function () {
+      if (ghost.parentNode) ghost.parentNode.removeChild(ghost);
+      bump(target);
+    };
+  }, true);
+
+  // -------------------------------------------------------- 5. misc polish
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startObserving);
+  else startObserving();
+})();
+</script>

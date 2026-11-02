@@ -1,0 +1,178 @@
+<script>
+/**
+ * ApiBridge – the glue between the unchanged storefront code and Apps Script.
+ *
+ *  1. fetch("/api/...")  ->  google.script.run.apiCall(...)  (Code.gs)
+ *     The storefront keeps using fetch(); this file answers those calls with a
+ *     normal Response object, so no other front-end code had to change.
+ *  2. Pictures: the files in /images are embedded (ImageData.html). Anything
+ *     that asks for  images/...  is swapped for the embedded copy.
+ *
+ * To use the same front end from another website, set  window.KM_API_URL
+ * to your deployed Web App URL – the bridge will then POST to it instead.
+ */
+(function () {
+  'use strict';
+
+  // ------------------------------------------------------------------ images
+  var blobUrls = {};
+
+  function toBlobUrl(dataUri) {
+    try {
+      var comma = dataUri.indexOf(',');
+      var meta = dataUri.slice(5, comma);
+      var mime = meta.split(';')[0];
+      var raw = meta.indexOf('base64') >= 0 ? atob(dataUri.slice(comma + 1)) : decodeURIComponent(dataUri.slice(comma + 1));
+      var bytes = new Uint8Array(raw.length);
+      for (var i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+      return URL.createObjectURL(new Blob([bytes], { type: mime }));
+    } catch (e) {
+      return dataUri;
+    }
+  }
+
+  function kmImage(path) {
+    if (typeof path !== 'string' || !window.KM_IMAGES) return path;
+    var key = path.replace(/^\.?\/+/, '');
+    var data = window.KM_IMAGES[key];
+    if (!data) return path;
+    return blobUrls[key] || (blobUrls[key] = toBlobUrl(data));
+  }
+  window.kmImage = kmImage;
+
+  function rewriteHtml(html) {
+    if (typeof html !== 'string' || html.indexOf('images/') < 0) return html;
+    return html.replace(/(\ssrc\s*=\s*)(["'])\/?(images\/[^"']+)\2/g, function (all, pre, q, path) {
+      var url = kmImage(path);
+      return url === path ? all : pre + q + url + q;
+    });
+  }
+
+  try {
+    var innerDesc = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+    Object.defineProperty(Element.prototype, 'innerHTML', {
+      configurable: true,
+      enumerable: innerDesc.enumerable,
+      get: innerDesc.get,
+      set: function (value) { innerDesc.set.call(this, rewriteHtml(value)); }
+    });
+    var insertAdj = Element.prototype.insertAdjacentHTML;
+    Element.prototype.insertAdjacentHTML = function (where, html) {
+      return insertAdj.call(this, where, rewriteHtml(html));
+    };
+    var srcDesc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    Object.defineProperty(HTMLImageElement.prototype, 'src', {
+      configurable: true,
+      enumerable: srcDesc.enumerable,
+      get: srcDesc.get,
+      set: function (value) { srcDesc.set.call(this, kmImage(value)); }
+    });
+    var setAttr = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function (name, value) {
+      if (this instanceof HTMLImageElement && String(name).toLowerCase() === 'src') value = kmImage(value);
+      return setAttr.call(this, name, value);
+    };
+  } catch (e) { /* very old browser: pictures fall back to their normal paths */ }
+
+  // elements written directly in the portal templates
+  Array.prototype.forEach.call(document.querySelectorAll('img[data-km-src]'), function (img) {
+    img.src = kmImage(img.getAttribute('data-km-src'));
+  });
+
+  // ------------------------------------------------------------------- server
+  function readHeader(headers, name) {
+    if (!headers) return '';
+    if (typeof headers.get === 'function') return headers.get(name) || '';
+    var wanted = name.toLowerCase();
+    for (var k in headers) if (Object.prototype.hasOwnProperty.call(headers, k) && k.toLowerCase() === wanted) return headers[k];
+    return '';
+  }
+
+  function callServer(request) {
+    var json = JSON.stringify(request);
+    if (window.google && google.script && google.script.run) {
+      return new Promise(function (resolve, reject) {
+        google.script.run
+          .withSuccessHandler(function (text) {
+            try { resolve(JSON.parse(text)); } catch (e) { reject(e); }
+          })
+          .withFailureHandler(function (err) {
+            reject(new Error((err && err.message) || 'Could not reach the server.'));
+          })
+          .apiCall(json);
+      });
+    }
+    if (window.KM_API_URL) {
+      request.envelope = true; // ask doPost for {status, body} so HTTP-style status codes survive
+      return nativeFetch(window.KM_API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(request) })
+        .then(function (r) { return r.json(); });
+    }
+    return Promise.reject(new Error('No Apps Script server found. Open the deployed Web App URL.'));
+  }
+
+  function delay(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  function callWithRetry(request) {
+    return callServer(request).catch(function (err) {
+      // one quiet retry: Apps Script occasionally drops a call while it is waking up
+      return delay(700).then(function () { return callServer(request); }).catch(function () { throw err; });
+    });
+  }
+
+  // short-lived cache + de-duplication for the read-only calls the store repeats a lot
+  var cache = {};
+  var inflight = {};
+  var CACHE_MS = 4000;
+
+  var nativeFetch = window.fetch ? window.fetch.bind(window) : null;
+
+  window.fetch = function (input, init) {
+    var url = typeof input === 'string' ? input : (input && input.url) || '';
+    if (!/^\/(api\/|health)/.test(url)) {
+      if (nativeFetch) return nativeFetch(input, init);
+      return Promise.reject(new Error('fetch is not available'));
+    }
+    init = init || {};
+    var method = String(init.method || 'GET').toUpperCase();
+    var request = {
+      method: method,
+      path: url,
+      authorization: readHeader(init.headers, 'Authorization'),
+      body: init.body ? (typeof init.body === 'string' ? init.body : String(init.body)) : undefined
+    };
+
+    var key = method === 'GET' ? method + ' ' + url + ' ' + request.authorization : '';
+    if (key) {
+      var hit = cache[key];
+      if (hit && Date.now() - hit.at < CACHE_MS) return Promise.resolve(makeResponse(hit.res));
+      if (inflight[key]) return inflight[key].then(makeResponse);
+    } else {
+      cache = {}; // any write invalidates what we remembered
+    }
+
+    var promise = callWithRetry(request).then(function (res) {
+      if (key) cache[key] = { at: Date.now(), res: res };
+      return res;
+    });
+    if (key) {
+      inflight[key] = promise;
+      var clear = function () { delete inflight[key]; };
+      promise.then(clear, clear);
+    }
+    return promise.then(makeResponse);
+  };
+
+  function makeResponse(res) {
+    return new Response(JSON.stringify(res.body === undefined ? {} : res.body), {
+      status: res.status || 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
+  // ------------------------------------------------------------ first route
+  // ?page=cart on the Web App URL opens that page (the hash itself is lost on reload inside Apps Script).
+  if (window.KM_INITIAL_ROUTE && !window.location.hash) {
+    try { window.location.hash = '#' + window.KM_INITIAL_ROUTE; } catch (e) { /* ignore */ }
+  }
+})();
+</script>

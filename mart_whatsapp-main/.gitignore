@@ -1,0 +1,11 @@
+﻿.clasprc.json
+.clasp.json
+node_modules/
+.env
+dist/
+.netlify/
+
+# Local Netlify folder
+.netlify
+
+netlify-ready/
