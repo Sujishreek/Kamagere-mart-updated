@@ -78,7 +78,11 @@ function createContext(store = {}) {
       computeHmacSha256Signature: (v, k) => signed(crypto.createHmac('sha256', toBuf(k)).update(toBuf(v)).digest()),
       base64Encode: v => toBuf(v).toString('base64'),
       base64EncodeWebSafe: v => toBuf(v).toString('base64').replace(/\+/g, '-').replace(/\//g, '_'),
-      base64DecodeWebSafe: s => signed(Buffer.from(s.replace(/-/g, '+').replace(/_/g, '/'), 'base64')),
+      base64Decode: s => signed(Buffer.from(s, 'base64')),
+      base64DecodeWebSafe: s => {
+        if (/[+/]/.test(s)) throw new Error('Could not decode string.');
+        return signed(Buffer.from(s.replace(/-/g, '+').replace(/_/g, '/'), 'base64'));
+      },
       newBlob: bytes => ({ getDataAsString: () => toBuf(bytes).toString('utf8'), getBytes: () => signed(toBuf(bytes)) }),
       formatDate: (d, tz, f) => d.toISOString(), sleep: () => {}
     }

@@ -25,7 +25,8 @@ const includes = [
   'AnimationScript'
 ];
 
-let html = fs.readFileSync(path.join(root, 'UserPortal.html'), 'utf8');
+function buildPortal(sourceName, outputName, initialRoute = '') {
+let html = fs.readFileSync(path.join(root, sourceName), 'utf8');
 
 for (const name of includes) {
   const marker = `<?!= include('${name}') ?>`;
@@ -38,7 +39,7 @@ for (const name of includes) {
 
 html = html.replace(
   /<\?!=\s*JSON\.stringify\(route\s*\|\|\s*''\)\s*\?>/,
-  JSON.stringify(process.env.KM_INITIAL_ROUTE || '')
+  JSON.stringify(process.env.KM_INITIAL_ROUTE || initialRoute)
 );
 html = html.replace(
   '<!-- JavaScript (order matters) -->',
@@ -52,5 +53,10 @@ if (unresolvedTemplate) {
 
 const outputDir = path.join(root, 'dist');
 fs.mkdirSync(outputDir, { recursive: true });
-fs.writeFileSync(path.join(outputDir, 'index.html'), html);
-console.log(`Built ${path.join(outputDir, 'index.html')}`);
+const outputPath = path.join(outputDir, outputName);
+fs.writeFileSync(outputPath, html);
+console.log(`Built ${outputPath}`);
+}
+
+buildPortal('UserPortal.html', 'index.html');
+buildPortal('AdminPanel.html', 'admin.html');

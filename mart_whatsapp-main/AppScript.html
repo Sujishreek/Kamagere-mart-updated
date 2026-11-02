@@ -1156,8 +1156,12 @@ function attachEvents() {
 
   // Sign in / out in another tab of the same browser is reflected here too
   window.addEventListener('storage', (event) => {
-    if (IS_ADMIN_PORTAL && event.key === STOCK_REFRESH_KEY) {
-      if (['admin', 'orders'].includes(state.route)) refreshAdminStock();
+    if (event.key === STOCK_REFRESH_KEY) {
+      if (IS_ADMIN_PORTAL && ['admin', 'orders'].includes(state.route)) {
+        refreshAdminStock();
+      } else if (!IS_ADMIN_PORTAL && ['home', 'cart'].includes(state.route)) {
+        loadProducts();
+      }
       return;
     }
 
@@ -1192,6 +1196,9 @@ function attachEvents() {
     if (IS_ADMIN_PORTAL && event.data?.type === 'order-placed' &&
         ['admin', 'orders'].includes(state.route)) {
       refreshAdminStock();
+    } else if (!IS_ADMIN_PORTAL && event.data?.type === 'order-placed' &&
+        ['home', 'cart'].includes(state.route)) {
+      loadProducts();
     }
   });
 
@@ -1220,6 +1227,11 @@ function attachEvents() {
 
 function setRoute(route, options = {}) {
   const target = route || 'home';
+  if (IS_ADMIN_PORTAL && !isAdminSession() &&
+      ['auth', 'profile'].includes(target)) {
+    setRoute('admin-login');
+    return;
+  }
   if (IS_ADMIN_PORTAL && ['cart', 'checkout'].includes(target)) {
     setRoute('home');
     return;
@@ -1886,7 +1898,7 @@ function renderAuth(panel = 'login') {
   const pageContent = document.getElementById('page-content');
   if (!pageContent) return;
 
-  pageContent.innerHTML = authMarkup(panel);
+  pageContent.innerHTML = authMarkup(IS_ADMIN_PORTAL ? 'admin-login' : panel);
   applyPreferredLanguage();
 }
 
@@ -2198,7 +2210,8 @@ async function renderAdminDashboard() {
       fetch(`${API_BASE}/api/store-location`),
       fetch(`${API_BASE}/api/categories`)
     ]);
-    if (!isAdminSession() || getAdminToken() !== token) {
+    if (!isAdminSession() || getAdminToken() !== token ||
+        !['admin', 'orders'].includes(state.route)) {
       requireAdminAccess();
       return;
     }

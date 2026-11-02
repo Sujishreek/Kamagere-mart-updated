@@ -213,7 +213,7 @@ t('web entry serves separate customer and admin portal templates', () => {
   assert.match(appScript, /\$\{IS_ADMIN_PORTAL \? '' : isSoldOut\(product\) \?/);
   assert.match(appScript, /if \(IS_ADMIN_PORTAL && \['cart', 'checkout'\]\.includes\(target\)\)/);
   assert.match(appScript, /const STOCK_REFRESH_KEY = 'km_stock_refresh'/);
-  assert.match(appScript, /if \(IS_ADMIN_PORTAL && event\.key === STOCK_REFRESH_KEY\) \{\s*if \(\['admin', 'orders'\]\.includes\(state\.route\)\) refreshAdminStock\(\);/);
+  assert.match(appScript, /if \(event\.key === STOCK_REFRESH_KEY\) \{\s*if \(IS_ADMIN_PORTAL && \['admin', 'orders'\]\.includes\(state\.route\)\) \{\s*refreshAdminStock\(\);\s*\} else if \(!IS_ADMIN_PORTAL && \['home', 'cart'\]\.includes\(state\.route\)\) \{\s*loadProducts\(\);/);
   assert.match(continuationScript, /LS\.setItem\(STOCK_REFRESH_KEY, `\$\{Date\.now\(\)\}-\$\{Math\.random\(\)\}`\)/);
   assert.match(continuationScript, /async function refreshAdminStock\(\)/);
   assert.match(continuationScript, /if \(!\['admin', 'orders'\]\.includes\(state\.route\)\) return;/);
@@ -221,7 +221,12 @@ t('web entry serves separate customer and admin portal templates', () => {
   assert.match(continuationScript, /const hasUnsavedStockEdit = input && previousProduct &&\s*Number\(input\.value\) !== getStock\(previousProduct\);\s*if \(input && !hasUnsavedStockEdit\) input\.value = getStock\(product\);/);
   assert.match(continuationScript, /fetch\(`\$\{API_BASE\}\/api\/products\?stockRefresh=\$\{Date\.now\(\)\}`\)/);
   assert.match(appScript, /stockUpdateChannel\?\.addEventListener\('message'/);
+  assert.match(appScript, /else if \(!IS_ADMIN_PORTAL && event\.data\?\.type === 'order-placed' &&\s*\['home', 'cart'\]\.includes\(state\.route\)\) \{\s*loadProducts\(\);/);
   assert.match(continuationScript, /stockUpdateChannel\?\.postMessage\(\{ type: 'order-placed' \}\)/);
+  assert.match(appScript, /if \(IS_ADMIN_PORTAL && !isAdminSession\(\) &&\s*\['auth', 'profile'\]\.includes\(target\)\) \{\s*setRoute\('admin-login'\);/);
+  assert.match(appScript, /authMarkup\(IS_ADMIN_PORTAL \? 'admin-login' : panel\)/);
+  assert.match(continuationScript, /if \(IS_ADMIN_PORTAL && !isAdminLogin\) \{\s*showToast\('Use the admin login form to access this portal\.'/);
+  assert.match(appScript, /if \(!isAdminSession\(\) \|\| getAdminToken\(\) !== token \|\|\s*!\['admin', 'orders'\]\.includes\(state\.route\)\)/);
   assert.doesNotMatch(continuationScript, /if \(document\.hidden \|\| state\.adminStockRefreshPromise\) return;/);
   assert.match(appScript, /window\.addEventListener\('focus', \(\) => \{\s*resumeOrderSuccessAfterWhatsapp\(\);\s*if \(IS_ADMIN_PORTAL && \['admin', 'orders'\]\.includes\(state\.route\)\) \{\s*refreshAdminStock\(\);/);
   assert.match(appScript, /if \(!\['admin', 'orders'\]\.includes\(target\) && state\.adminStockTimer\)/);
@@ -291,6 +296,21 @@ t('registration sends a six-digit email code and creates no account until verifi
   const pending = vm.runInContext("readTable_('PendingRegistrations').rows[0]", b);
   assert.notEqual(pending.password, 'Str0ng@Pass');
   assert.equal(pending.codeHash.includes(b.__store.sentEmails[0].body.match(/\b(\d{6})\b/)[1]), false);
+});
+t('registration restores a missing pending-registration sheet when the schema is already marked ready', () => {
+  const b = boot({ SCHEMA_READY: '4' });
+  const spreadsheet = b.SpreadsheetApp.openById('X');
+  spreadsheet.deleteSheet(spreadsheet.getSheetByName('PendingRegistrations'));
+  vm.runInContext('_schemaChecked = false', b);
+
+  const result = b.call('POST', '/api/register', {
+    name: 'Nila', email: 'nila@example.com', phone: '9876543211',
+    password: 'Str0ng@Pass', address: 'Home'
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.verificationRequired, true);
+  assert.equal(spreadsheet.getSheetByName('PendingRegistrations').getLastRow(), 2);
 });
 t('deployed registration email embeds its CID logo in Gmail API and fallback messages', () => {
   const deployedSrc = path.join(SRC, 'mart_whatsapp-main');

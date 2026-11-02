@@ -20,6 +20,16 @@ function include(name) {
   return HtmlService.createHtmlOutputFromFile(name).getContent();
 }
 
+function registrationCodeHash_(email, code) {
+  return sha256Hex_(prop_('ADMIN_JWT_SECRET') + ':' + email + ':' + code);
+}
+
+function findPendingRegistration_(email) {
+  return findUserBy_(readTable_('PendingRegistrations'), function (row) {
+    return row.email === email;
+  });
+}
+
 // --- web entries
 
 function doGet(e) {

@@ -65,6 +65,22 @@ function textFormats_(name) {
 function ensureSchema_(force) {
   if (_schemaChecked && !force) return;
   if (!force && prop_('SCHEMA_READY') === '4') {
+    var ssReady = ss_();
+    Object.keys(SCHEMAS).forEach(function (name) {
+      var sh = ssReady.getSheetByName(name);
+      if (!sh) {
+        sh = ssReady.insertSheet(name);
+        var cols = columns_(name);
+        var header = cols.map(function (c) { return c[0]; });
+        sh.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight('bold').setBackground('#dcfce7');
+        sh.setFrozenRows(1);
+        cols.forEach(function (c, i) {
+          if (c[1] !== 'n') sh.getRange(1, i + 1, sh.getMaxRows(), 1).setNumberFormat('@');
+        });
+        sh.getRange(1, 1, 1, header.length).setNumberFormat('@');
+        if (name === 'Blobs') sh.hideSheet();
+      }
+    });
     _schemaChecked = true;
     return;
   }

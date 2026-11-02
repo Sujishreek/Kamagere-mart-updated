@@ -34,7 +34,7 @@ node build-netlify.mjs
 ```
 
 The generated `dist` directory is intentionally ignored by Git because it embeds the API URL. For a local preview, serve `dist` with a static HTTP server.
-While the storefront is open, product stock refreshes about every 20 seconds and signed-in customer order tracking refreshes about every 15 seconds. Admin status changes and cancellations are saved to the same backend used by the customer pages.
+While the storefront is open, product stock refreshes immediately after an order is placed in another tab of the same browser, with a 20-second polling fallback. Signed-in customer order tracking refreshes about every 15 seconds. Admin status changes and cancellations are saved to the same backend used by the customer pages.
 
 ## Important
 

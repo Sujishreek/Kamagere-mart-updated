@@ -10,6 +10,7 @@ In the Apps Script project's **Project Settings → Script Properties**, configu
 - `ADMIN_EMAIL` — the administrator's sign-in email
 - `ADMIN_PASSWORD` — a unique password that meets the validation rules in `Config.js`
 - `GOOGLE_CLIENT_ID` — optional; required only for Google sign-in
+- `REGISTRATION_FROM_EMAIL` — optional; defaults to `kamageremart04@gmail.com`
 
 Run `setup()` from the Apps Script editor after setting the required properties and granting access to the spreadsheet. The setup creates `ADMIN_JWT_SECRET` if it is missing. Never put these values in source code or commit them.
 
@@ -33,7 +34,7 @@ node build-netlify.mjs
 ```
 
 The generated `dist` directory is intentionally ignored by Git because it embeds the API URL. For a local preview, serve `dist` with a static HTTP server.
-While the storefront is open, product stock refreshes about every 20 seconds and signed-in customer order tracking refreshes about every 15 seconds. Admin status changes and cancellations are saved to the same backend used by the customer pages.
+While the storefront is open, product stock refreshes immediately after an order is placed in another tab of the same browser, with a 20-second polling fallback. Signed-in customer order tracking refreshes about every 15 seconds. Admin status changes and cancellations are saved to the same backend used by the customer pages.
 
 ## Important
 

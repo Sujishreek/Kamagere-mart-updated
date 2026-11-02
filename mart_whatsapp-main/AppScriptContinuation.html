@@ -672,7 +672,7 @@ async function loadCategories() {
 
 async function loadProducts() {
   try {
-    const response = await fetch(`${API_BASE}/api/products`);
+    const response = await fetch(`${API_BASE}/api/products?stockRefresh=${Date.now()}`);
     const data = await response.json();
     if (Array.isArray(data)) {
       state.products = data;
@@ -693,6 +693,10 @@ async function loadProducts() {
 async function handleLogin(form) {
   const payload = Object.fromEntries(new FormData(form).entries());
   const isAdminLogin = form.dataset.formType === 'admin-login';
+  if (IS_ADMIN_PORTAL && !isAdminLogin) {
+    showToast('Use the admin login form to access this portal.');
+    return;
+  }
   const submitButton = form.querySelector('button[type="submit"]');
   if (submitButton) submitButton.disabled = true;
 
@@ -937,6 +941,7 @@ async function refreshAdminStock() {
       if (!response.ok || !Array.isArray(products)) {
         throw new Error(products.message || 'The server returned an invalid products response.');
       }
+      if (!['admin', 'orders'].includes(state.route) || !isAdminSession()) return;
       const previousProducts = state.products;
       state.products = products;
       // A product was added or removed elsewhere: rebuild only if nothing is being typed

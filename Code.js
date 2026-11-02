@@ -20,6 +20,16 @@ function include(name) {
   return HtmlService.createHtmlOutputFromFile(name).getContent();
 }
 
+function registrationCodeHash_(email, code) {
+  return sha256Hex_(prop_('ADMIN_JWT_SECRET') + ':' + email + ':' + code);
+}
+
+function findPendingRegistration_(email) {
+  return findUserBy_(readTable_('PendingRegistrations'), function (row) {
+    return row.email === email;
+  });
+}
+
 // --- web entries
 
 function doGet(e) {
@@ -151,7 +161,9 @@ function handleApi_(req) {
     }
     return fail_(404, 'Not found.');
   } catch (error) {
-    console.error('API error: ' + (error && error.stack ? error.stack : error));
+    var errorDetails = error && error.stack ? error.stack : String(error);
+    console.error('API error: ' + errorDetails);
+    Logger.log('API error: ' + errorDetails);
     return fail_(500, 'Server error');
   }
 }
