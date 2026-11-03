@@ -3,4 +3,5 @@ build-netlify.mjs
 netlify.toml
 netlify-ready/**
 tests/**
+mart_whatsapp-main/**
 *.md

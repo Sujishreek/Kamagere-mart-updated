@@ -105,13 +105,13 @@ function getOrderMapRoute(order) {
   const destination = getOrderDestination(order.address);
   if (!destination) return null;
 
-  const mapsUrl = new URL('https://www.google.com/maps/dir/');
+  const mapsUrl = new URL('https:' + '/' + '/www.google.com/maps/dir/');
   mapsUrl.searchParams.set('api', '1');
   mapsUrl.searchParams.set('origin', state.storeLocation);
   mapsUrl.searchParams.set('destination', destination);
   mapsUrl.searchParams.set('travelmode', 'driving');
 
-  const embedUrl = new URL('https://maps.google.com/maps');
+  const embedUrl = new URL('https:' + '/' + '/maps.google.com/maps');
   embedUrl.searchParams.set('saddr', state.storeLocation);
   embedUrl.searchParams.set('daddr', destination);
   embedUrl.searchParams.set('dirflg', 'd');
@@ -438,14 +438,23 @@ function updateOrderCancellationCountdowns() {
   });
 }
 
-async function cancelOrder(orderId) {
+async function cancelOrder(orderId, button) {
+  if (button?.dataset.submitting === 'true') return;
   const order = state.orders.find((item) => String(item.id) === String(orderId));
   if (!order?.cancelToken) {
     showToast('Cancellation details are not available for this order');
     return;
   }
 
+  if (button) {
+    button.dataset.submitting = 'true';
+    button.disabled = true;
+    button.textContent = 'Cancelling...';
+  }
+  let whatsappWindow = null;
+
   try {
+    whatsappWindow = window.open('about:blank', '_blank');
     const response = await fetch(`${API_BASE}/api/orders/${encodeURIComponent(order.id)}/cancel`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -464,9 +473,37 @@ async function cancelOrder(orderId) {
     order.status = result.status || 'Cancelled';
     order.cancelToken = '';
     saveOrders(state.orders, state.user);
-    showToast('Order cancelled successfully');
-    renderOrders();
+    if (result.notificationSent) {
+      whatsappWindow?.close();
+      showOrderCancelledPopup(order.id);
+      return;
+    }
+
+    if (result.notificationError) {
+      console.error('Automatic WhatsApp cancellation notification failed:', result.notificationError);
+    }
+    const waLink = buildWhatsappOrderLink(order, {
+      customerName: order.customerName || state.user?.name || '',
+      customerPhone: order.customerPhone || state.user?.phone || '',
+      address: order.address || '',
+      items: order.items || [],
+      total: order.total,
+      payment: order.payment
+    }, true);
+    SS.setItem(WHATSAPP_RETURN_CANCEL_KEY, String(order.id));
+    if (whatsappWindow) {
+      whatsappWindow.location.href = waLink;
+    } else {
+      window.location.href = waLink;
+    }
+    showToast('Tap Send in WhatsApp to notify the store, then return here.');
   } catch (error) {
+    whatsappWindow?.close();
+    if (button) {
+      button.dataset.submitting = 'false';
+      button.disabled = false;
+      button.textContent = 'Cancel order';
+    }
     showToast(error.message || 'Unable to cancel order.');
   }
 }
@@ -1001,7 +1038,7 @@ function editProduct(productId) {
   form.elements.namedItem('oldPrice').value = product.oldPrice;
   form.elements.namedItem('description').value = product.description;
   form.elements.namedItem('stock').value = Number.isFinite(getStock(product)) ? getStock(product) : 0;
-  form.elements.namedItem('image').value = product.image?.startsWith('https://') ? product.image : '';
+  form.elements.namedItem('image').value = product.image?.startsWith('https:' + '/' + '/') ? product.image : '';
   form.elements.namedItem('image-file').value = '';
 
   const preview = document.getElementById('product-image-preview');
@@ -1260,8 +1297,8 @@ async function resendRegistrationCode(button) {
 
 const STORE_WHATSAPP_NUMBER = '918197679897';
 
-// Builds a https://wa.me/ link that opens WhatsApp with the whole order list typed in.
-function buildWhatsappOrderLink(order, orderPayload) {
+// Builds a WhatsApp click-to-chat URL with the whole order list typed in.
+function buildWhatsappOrderLink(order, orderPayload, cancelled = false) {
   const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
   const inr = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const ph = String(orderPayload.customerPhone || '').replace(/\D/g, '').slice(-10);
@@ -1274,6 +1311,7 @@ function buildWhatsappOrderLink(order, orderPayload) {
     `${i + 1}. ${clean(it.name)}${clean(it.unit) ? ` (${clean(it.unit)})` : ''} x${clean(it.quantity)} = ${inr(it.price * it.quantity)}`
   ).join('\n');
   const lines = [
+    ...(cancelled ? ['❌ ORDER CANCELLED'] : []),
     `🛒 Order ID: ${clean(order.id)}`,
     `Date: ${clean(order.date || new Date().toLocaleString('en-IN'))}`,
     '',
@@ -1286,10 +1324,12 @@ function buildWhatsappOrderLink(order, orderPayload) {
     `Total: ${inr(orderPayload.total)} (${orderPayload.payment === 'UPI' ? 'UPI' : 'COD'})`
   ];
 
-  return `https://wa.me/${STORE_WHATSAPP_NUMBER}?text=${encodeURIComponent(lines.join('\n'))}`;
+  return 'https:' + '/' + '/wa.me/' + STORE_WHATSAPP_NUMBER + '?text=' + encodeURIComponent(lines.join('\n'));
 }
 
 async function handleCheckout(form) {
+  if (form.dataset.submitting === 'true') return;
+
   const payload = Object.fromEntries(new FormData(form).entries());
   const customer = state.user || {};
   const items = state.checkoutMode === 'buy-now' ? getBuyNowItems() : getCartItems();
@@ -1345,8 +1385,16 @@ async function handleCheckout(form) {
     source: state.checkoutMode === 'buy-now' ? 'Buy Now' : 'Cart'
   };
   const customerToken = getCustomerToken();
+  const placeOrderButton = form.querySelector('button[type="submit"]');
+  form.dataset.submitting = 'true';
+  if (placeOrderButton) {
+    placeOrderButton.disabled = true;
+    placeOrderButton.textContent = 'Placing order...';
+  }
+  let whatsappWindow = null;
 
   try {
+    whatsappWindow = window.open('about:blank', '_blank');
     const response = await fetch(`${API_BASE}/api/orders`, {
       method: 'POST',
       // the sign-in token links the order to your account (the WhatsApp order list goes to the admin)
@@ -1392,9 +1440,55 @@ async function handleCheckout(form) {
     LS.setItem(STOCK_REFRESH_KEY, `${Date.now()}-${Math.random()}`);
     stockUpdateChannel?.postMessage({ type: 'order-placed' });
     const waLink = buildWhatsappOrderLink(order, orderPayload);
-    showWhatsappOrderPrompt({ ...order, waLink });
+    let notificationCompleted = false;
+    let notificationPending = false;
+    if (order.trackingToken) {
+      try {
+        const notificationResponse = await fetch(`${API_BASE}/api/orders/${encodeURIComponent(order.id)}/notify-whatsapp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ trackingToken: order.trackingToken })
+        });
+        const notification = await notificationResponse.json();
+        if (notificationResponse.ok) {
+          notificationCompleted = !notification.pending;
+          notificationPending = Boolean(notification.pending);
+          order.invoice = notification;
+        } else {
+          console.error('WhatsApp order notification failed:', notification.message || notificationResponse.status);
+        }
+      } catch (notificationError) {
+        console.error('Could not confirm WhatsApp order notification:', notificationError);
+      }
+    }
+
+    if (order.invoice?.sent || notificationPending) {
+      whatsappWindow?.close();
+      if (notificationPending) {
+        showToast('Your order is placed. Its WhatsApp notification is still processing.');
+      }
+    } else if (notificationCompleted || !order.trackingToken) {
+      if (whatsappWindow) {
+        whatsappWindow.location.href = waLink;
+      } else {
+        SS.setItem(WHATSAPP_RETURN_ORDER_KEY, JSON.stringify(order));
+        window.location.href = waLink;
+        return;
+      }
+    } else {
+      whatsappWindow?.close();
+      showToast('Your order is placed, but WhatsApp notification could not be confirmed.');
+    }
+
+    showOrderSuccess(order);
     loadProducts();
   } catch (error) {
+    whatsappWindow?.close();
+    form.dataset.submitting = 'false';
+    if (placeOrderButton) {
+      placeOrderButton.disabled = false;
+      placeOrderButton.textContent = 'Place order';
+    }
     showToast(error.message || 'Order placement failed');
     // Stock may have changed since the page loaded; refresh the counts
     loadProducts();
@@ -1420,12 +1514,12 @@ function useCurrentLocation() {
   navigator.geolocation.getCurrentPosition(
     ({ coords }) => {
       const coordinates = coords.latitude.toFixed(6) + ',' + coords.longitude.toFixed(6);
-      const mapsUrl = 'https://www.google.com/maps?q=' + coordinates;
+      const mapsUrl = 'https:' + '/' + '/www.google.com/maps?q=' + coordinates;
       const addressLines = addressField.value
         .split('\n')
         .filter((line) => !line.startsWith('Current location:'));
       addressField.value = addressLines.concat(['Current location: ' + mapsUrl]).filter(Boolean).join('\n');
-      mapFrame.src = 'https://maps.google.com/maps?q=' + encodeURIComponent(coordinates) + '&z=16&output=embed';
+      mapFrame.src = 'https:' + '/' + '/maps.google.com/maps?q=' + encodeURIComponent(coordinates) + '&z=16&output=embed';
       mapLink.href = mapsUrl;
       map.hidden = false;
       status.textContent = 'Current location selected. Add your house, street, or landmark details above if needed.';
@@ -1797,7 +1891,7 @@ function translateProductText(text) {
 
   let translated = text;
   for (const [term, kannada] of PRODUCT_TERM_TRANSLATION_ENTRIES) {
-    const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedTerm = term.replace(/[.*+?^{}()|[\]\\]/g, '\\$&').replace(/\$/g, '\\$');
     translated = translated.replace(new RegExp(`\\b${escapedTerm}\\b`, 'gi'), kannada);
   }
   return translated.replace(/\s+([.,])/g, '$1').replace(/\s{2,}/g, ' ').trim();
@@ -2041,15 +2135,6 @@ function showToast(message) {
   toast.classList.add('show');
   clearTimeout(showToast._timer);
   showToast._timer = setTimeout(() => toast.classList.remove('show'), 2200);
-}
-
-function escapeHtml(value) {
-  return String(value || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
 }
 
 </script>

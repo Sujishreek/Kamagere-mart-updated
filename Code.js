@@ -113,6 +113,7 @@ function routes_() {
 
     // orders
     ['POST', /^\/api\/orders$/, placeOrder_, null, true],
+    ['POST', /^\/api\/orders\/([^\/]+)\/notify-whatsapp$/, notifyOrderWhatsapp_, null, true],
     ['GET', /^\/api\/orders\/([^\/]+)\/track$/, trackOrder_, null, false],
     ['PATCH', /^\/api\/admin\/orders\/([^\/]+)\/cancel$/, adminCancelOrder_, 'admin', true],
     ['PATCH', /^\/api\/orders\/([^\/]+)\/cancel$/, cancelOrder_, null, true],

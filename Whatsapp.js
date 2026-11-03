@@ -60,20 +60,28 @@ function invoiceParameters_(order) {
 }
 
 /** Sends the invoice template. Returns a short status string ("Sent" or "Failed: ..."). Never throws. */
-function sendWhatsappInvoice_(order, phone) {
+function sendWhatsappInvoice_(order, phone, messageType) {
   try {
     var version = prop_('WA_API_VERSION') || 'v23.0';
     var url = 'https://graph.facebook.com/' + encodeURIComponent(version) + '/' + encodeURIComponent(prop_('WA_PHONE_NUMBER_ID')) + '/messages';
+    var parameters = invoiceParameters_(order);
+    if (messageType === 'cancelled') {
+      parameters[0] = waText_('ORDER CANCELLED | ' + parameters[0], 250);
+      parameters[1] = waText_('CANCELLED - ' + order.id, 30);
+    }
+    var templateName = messageType === 'cancelled'
+      ? prop_('WA_CANCELLATION_TEMPLATE_NAME') || prop_('WA_TEMPLATE_NAME')
+      : prop_('WA_TEMPLATE_NAME');
     var payload = {
       messaging_product: 'whatsapp',
       to: '91' + phone,
       type: 'template',
       template: {
-        name: prop_('WA_TEMPLATE_NAME'),
+        name: templateName,
         language: { code: prop_('WA_TEMPLATE_LANG') || 'en' },
         components: [{
           type: 'body',
-          parameters: invoiceParameters_(order).map(function (t) { return { type: 'text', text: t }; })
+          parameters: parameters.map(function (t) { return { type: 'text', text: t }; })
         }]
       }
     };
@@ -88,10 +96,12 @@ function sendWhatsappInvoice_(order, phone) {
     if (code >= 200 && code < 300) return 'Sent';
     var detail = '';
     try { var j = JSON.parse(res.getContentText()); detail = (j.error && (j.error.message || j.error.type)) || ''; } catch (e) { /* ignore */ }
-    console.error('WhatsApp invoice failed for ' + order.id + ': HTTP ' + code + ' ' + detail);
+    console.error('WhatsApp ' + (messageType === 'cancelled' ? 'cancellation' : 'invoice') +
+      ' failed for ' + order.id + ': HTTP ' + code + ' ' + detail);
     return ('Failed: HTTP ' + code + ' ' + detail).slice(0, 200);
   } catch (error) {
-    console.error('WhatsApp invoice error for ' + order.id + ': ' + error);
+    console.error('WhatsApp ' + (messageType === 'cancelled' ? 'cancellation' : 'invoice') +
+      ' error for ' + order.id + ': ' + error);
     return ('Failed: ' + (error && error.message ? error.message : error)).slice(0, 200);
   }
 }

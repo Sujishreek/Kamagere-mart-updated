@@ -77,6 +77,10 @@ t('web entry serves separate customer and admin portal templates', () => {
   const templates = [];
   const titles = [];
   installHtmlService(portalContext, templates, titles);
+  for (const templateFile of ['UserPortal.html', 'AdminPanel.html']) {
+    const markup = require('fs').readFileSync(path.join(SRC, templateFile), 'utf8');
+    assert.ok(markup.indexOf("include('AppScriptContinuation')") < markup.indexOf("include('AppScript')"));
+  }
   portalContext.doGet({ parameter: { page: 'cart' } });
   assert.equal(templates[0].name, 'UserPortal');
   assert.equal(templates[0].route, 'cart');
@@ -155,7 +159,7 @@ t('web entry serves separate customer and admin portal templates', () => {
   assert.match(stylesheet, /input\[aria-invalid="true"\][\s\S]*?border-color: #dc2626/);
   assert.match(stylesheet, /\.field-hint\.is-error\s*\{[\s\S]*?color: #b91c1c/);
   assert.match(stylesheet, /\.registration-loading\s*\{[\s\S]*?z-index: 10000/);
-  const orderLinkBuilder = continuationScript.match(/function buildWhatsappOrderLink\(order, orderPayload\) \{[\s\S]*?\n\}/)?.[0];
+  const orderLinkBuilder = continuationScript.match(/function buildWhatsappOrderLink\(order, orderPayload, cancelled = false\) \{[\s\S]*?\n\}/)?.[0];
   assert.ok(orderLinkBuilder, 'Expected WhatsApp order link builder');
   const orderLinkContext = vm.createContext({ Intl, Date, encodeURIComponent });
   vm.runInContext(`const STORE_WHATSAPP_NUMBER = '918197679897'; ${orderLinkBuilder}; this.buildOrderLink = buildWhatsappOrderLink;`, orderLinkContext);
@@ -191,6 +195,19 @@ t('web entry serves separate customer and admin portal templates', () => {
     '',
     'Total: ₹525.00 (COD)'
   ].join('\n'));
+  const cancelledOrderLink = orderLinkContext.buildOrderLink(
+    { id: 'KM8071316', date: '01/11/2026, 12:57:51 pm' },
+    {
+      customerName: 'Meenakshi G', customerPhone: '9840250476', address: 'Store Road',
+      items: [{ name: 'Potato', unit: '1Kg', quantity: 2, price: 35 }],
+      total: 70, payment: 'COD'
+    },
+    true
+  );
+  const cancelledOrderMessage = new URL(cancelledOrderLink).searchParams.get('text');
+  assert.match(cancelledOrderMessage, /ORDER CANCELLED[\s\S]*Order ID: KM8071316/u);
+  assert.match(cancelledOrderMessage, /Potato \(1Kg\) x2 = ₹70\.00/u);
+  assert.match(cancelledOrderMessage, /Total: ₹70\.00 \(COD\)/u);
   const messyOrderLink = orderLinkContext.buildOrderLink(
     { id: ' KM 0912296 ', date: ' today   ' },
     {
@@ -203,12 +220,23 @@ t('web entry serves separate customer and admin portal templates', () => {
   assert.match(messyOrderMessage, /Customer: Meenakshi G \| \+91 98402 50476\nLocation: https:\/\/maps\.example\.test\/\?q=13\.1,80\.2/u);
   assert.match(messyOrderMessage, /1\. Sugar \(1 kg\) x1 = ₹47\.87/u);
   assert.match(messyOrderMessage, /Total: ₹72\.87 \(COD\)/u);
-  assert.match(continuationScript, /showWhatsappOrderPrompt\(\{ \.\.\.order, waLink \}\);/);
-  assert.doesNotMatch(continuationScript, /setTimeout\(\(\) => \{ window\.location\.href = waLink;/);
-  assert.match(appScript, /function showWhatsappOrderPrompt\(order\)[\s\S]*?Send order list to admin WhatsApp\?[\s\S]*?Tap Send there, then return here/);
-  assert.match(appScript, /<a class="primary-btn"[^>]*href="\$\{escapeHtml\(order\.waLink\)\}" target="_top" data-action="send-order-whatsapp">/);
-  assert.match(appScript, /sendLink\?\.addEventListener\('click', \(\) => \{\s*SS\.setItem\(WHATSAPP_RETURN_ORDER_KEY, JSON\.stringify\(order\)\);/);
-  assert.doesNotMatch(appScript, /window\.location\.href = order\.waLink/);
+  assert.match(continuationScript, /if \(form\.dataset\.submitting === 'true'\) return;/);
+  assert.match(continuationScript, /whatsappWindow = window\.open\('about:blank', '_blank'\);/);
+  assert.ok(continuationScript.includes("return 'https:' + '/' + '/wa.me/'"));
+  assert.ok(continuationScript.indexOf("LS.removeItem(CART_KEY)") < continuationScript.indexOf("/notify-whatsapp"));
+  assert.ok(continuationScript.indexOf("saveOrders(existingOrders, state.user)") < continuationScript.indexOf("/notify-whatsapp"));
+  assert.match(continuationScript, /\/api\/orders\/\$\{encodeURIComponent\(order\.id\)\}\/notify-whatsapp/);
+  assert.match(continuationScript, /if \(order\.invoice\?\.sent \|\| notificationPending\) \{\s*whatsappWindow\?\.close\(\);/);
+  assert.match(continuationScript, /showOrderSuccess\(order\);/);
+  assert.doesNotMatch(continuationScript, /showWhatsappOrderPrompt/);
+  assert.doesNotMatch(appScript, /function showWhatsappOrderPrompt|Send order list to admin WhatsApp\?|Send order list on WhatsApp/);
+  assert.match(appScript, /function showOrderSuccess\(order\)[\s\S]*?Thanks for placing your order!/);
+  assert.match(continuationScript, /async function cancelOrder\(orderId, button\)[\s\S]*?window\.open\('about:blank', '_blank'\)[\s\S]*?\/cancel/);
+  assert.match(continuationScript, /if \(result\.notificationSent\) \{\s*whatsappWindow\?\.close\(\);\s*showOrderCancelledPopup\(order\.id\);/);
+  assert.match(continuationScript, /buildWhatsappOrderLink\(order, \{[\s\S]*?\}, true\)/);
+  assert.match(continuationScript, /SS\.setItem\(WHATSAPP_RETURN_CANCEL_KEY, String\(order\.id\)\)/);
+  assert.match(appScript, /function showOrderCancelledPopup\(orderId\)[\s\S]*?Your order is cancelled[\s\S]*?data-action="close-order-cancelled">OK/);
+  assert.match(appScript, /const cancelledOrderId = SS\.getItem\(WHATSAPP_RETURN_CANCEL_KEY\);[\s\S]*?showOrderCancelledPopup\(cancelledOrderId\)/);
   assert.match(appScript, /window\.addEventListener\('pageshow', resumeOrderSuccessAfterWhatsapp\)/);
   assert.match(appScript, /if \(!IS_ADMIN_PORTAL &&\s*\(SS\.getItem\(LANGUAGE_PROMPT_KEY\) \|\| new URLSearchParams\(window\.location\.search\)\.has\('qadmin'\)\)\) return;/);
   assert.match(appScript, /const isAdminLink = IS_ADMIN_PORTAL \|\|\s*window\.KM_INITIAL_ROUTE === 'admin-login' \|\|\s*new URLSearchParams\(window\.location\.search\)\.has\('qadmin'\);/);
@@ -429,6 +457,14 @@ t('unknown payment method rejected', () => { assert.equal(c.call('POST', '/api/o
 t('COD order uses click-to-chat status without automatic WhatsApp send', () => {
   const r = c.call('POST', '/api/orders', order()); assert.equal(r.status, 201); assert.equal(r.body.order.payment, 'COD');
   assert.equal(invoiceStatusOf(c, r.body.order.id), 'Click-to-chat'); assert.equal(c.fetched.length, 0);
+  const invalid = c.call('POST', '/api/orders/' + r.body.order.id + '/notify-whatsapp', { trackingToken: 'invalid' });
+  assert.equal(invalid.status, 403);
+  const fallback = c.call('POST', '/api/orders/' + r.body.order.id + '/notify-whatsapp', {
+    trackingToken: r.body.order.trackingToken
+  });
+  assert.equal(fallback.body.sent, false);
+  assert.equal(fallback.body.configured, false);
+  assert.equal(c.fetched.length, 0);
 });
 t('bad UPI_ID is ignored', () => { const b = boot({ UPI_ID: 'not a upi id' }); assert.equal(b.call('GET', '/api/payment-config').body.upiEnabled, false); });
 
@@ -444,14 +480,74 @@ t('lower-case "upi" is accepted and normalised', () => { assert.equal(c.call('PO
 // ---------- WhatsApp invoice
 c = boot(WA);
 let token = signup(c);
-t('Cloud API credentials do not trigger duplicate order notifications', () => {
-  const r = c.call('POST', '/api/orders', order({ customerPhone: '9000000000' }), token); assert.equal(r.status, 201);
+t('order placement sends exactly one admin WhatsApp invoice through the Cloud API', () => {
+  const placed = c.call('POST', '/api/orders', order({ customerPhone: '9000000000' }), token);
+  assert.equal(placed.status, 201);
   assert.equal(c.fetched.length, 0);
-  assert.equal(invoiceStatusOf(c, r.body.order.id), 'Click-to-chat');
+  assert.equal(invoiceStatusOf(c, placed.body.order.id), 'Click-to-chat');
+  const r = c.call('POST', '/api/orders/' + placed.body.order.id + '/notify-whatsapp', {
+    trackingToken: placed.body.order.trackingToken
+  });
+  assert.equal(r.status, 200);
+  assert.equal(c.fetched.length, 1);
+  assert.equal(r.body.sent, true);
+  assert.equal(c.fetched[0].payload.to, '918197679897');
+  assert.match(c.fetched[0].payload.template.components[0].parameters[3].text, /Aashirvaad Atta/u);
+  assert.equal(invoiceStatusOf(c, placed.body.order.id), 'Sent');
+  const duplicate = c.call('POST', '/api/orders/' + placed.body.order.id + '/notify-whatsapp', {
+    trackingToken: placed.body.order.trackingToken
+  });
+  assert.equal(duplicate.body.alreadySent, true);
+  assert.equal(c.fetched.length, 1);
 });
-t('guest checkout also avoids an automatic Cloud API send', () => {
-  const r = c.call('POST', '/api/orders', order()); assert.equal(r.status, 201);
-  assert.equal(c.fetched.length, 0); assert.equal(invoiceStatusOf(c, r.body.order.id), 'Click-to-chat');
+t('guest order placement also sends one admin WhatsApp invoice when configured', () => {
+  const placed = c.call('POST', '/api/orders', order()); assert.equal(placed.status, 201);
+  assert.equal(c.fetched.length, 1);
+  const r = c.call('POST', '/api/orders/' + placed.body.order.id + '/notify-whatsapp', {
+    trackingToken: placed.body.order.trackingToken
+  });
+  assert.equal(r.body.sent, true);
+  assert.equal(c.fetched.length, 2);
+  assert.equal(invoiceStatusOf(c, placed.body.order.id), 'Sent');
+});
+t('a failed WhatsApp attempt is not automatically sent a second time', () => {
+  const b = boot(WA);
+  b.fetchResult = { code: 500, body: '{"error":{"message":"template rejected"}}' };
+  const placed = b.call('POST', '/api/orders', order());
+  const path = '/api/orders/' + placed.body.order.id + '/notify-whatsapp';
+  const first = b.call('POST', path, { trackingToken: placed.body.order.trackingToken });
+  assert.equal(first.body.sent, false);
+  assert.equal(b.fetched.length, 1);
+  const second = b.call('POST', path, { trackingToken: placed.body.order.trackingToken });
+  assert.equal(second.body.alreadyAttempted, true);
+  assert.equal(b.fetched.length, 1);
+});
+t('customer cancellation sends one cancelled order message to admin before the success response', () => {
+  const b = boot({ ...WA, WA_CANCELLATION_TEMPLATE_NAME: 'order_cancelled' });
+  const placed = b.call('POST', '/api/orders', order({ items: [{ id: 1, quantity: 1 }] }));
+  const cancellation = b.call('PATCH', '/api/orders/' + placed.body.order.id + '/cancel', {
+    cancelToken: placed.body.order.cancelToken
+  });
+  assert.equal(cancellation.status, 200);
+  assert.equal(cancellation.body.status, 'Cancelled');
+  assert.equal(cancellation.body.notificationSent, true);
+  assert.equal(b.fetched.length, 1);
+  assert.equal(b.fetched[0].payload.to, '918197679897');
+  assert.equal(b.fetched[0].payload.template.name, 'order_cancelled');
+  const parameters = b.fetched[0].payload.template.components[0].parameters;
+  assert.match(parameters[0].text, /^ORDER CANCELLED/u);
+  assert.match(parameters[1].text, /CANCELLED - /u);
+  assert.match(parameters[3].text, /Aashirvaad Atta/u);
+});
+t('customer cancellation reports WhatsApp fallback when Cloud API is not configured', () => {
+  const b = boot({});
+  const placed = b.call('POST', '/api/orders', order({ items: [{ id: 1, quantity: 1 }] }));
+  const cancellation = b.call('PATCH', '/api/orders/' + placed.body.order.id + '/cancel', {
+    cancelToken: placed.body.order.cancelToken
+  });
+  assert.equal(cancellation.status, 200);
+  assert.equal(cancellation.body.notificationSent, false);
+  assert.equal(b.fetched.length, 0);
 });
 t('a valid token overrides a spoofed userId in the body', () => {
   const r = c.call('POST', '/api/orders', order({ userId: 999 }), token); assert.equal(r.status, 201); assert.equal(String(r.body.order.userId), '1');

@@ -41,6 +41,7 @@ const ACCOUNT_ORDERS_KEY = 'km_account_orders:';
 const ADMIN_TOKEN_KEY = 'km_admin_token';
 const STOCK_REFRESH_KEY = 'km_stock_refresh';
 const WHATSAPP_RETURN_ORDER_KEY = 'km_order_success_after_whatsapp';
+const WHATSAPP_RETURN_CANCEL_KEY = 'km_order_cancelled_after_whatsapp';
 const stockUpdateChannel = typeof BroadcastChannel === 'function'
   ? new BroadcastChannel('km_stock_updates')
   : null;
@@ -48,6 +49,15 @@ const ADMIN_EMAIL_KEY = 'km_admin_email';
 const CUSTOMER_TOKEN_KEY = 'km_customer_token';
 const LANGUAGE_KEY = 'km_language';
 const LANGUAGE_PROMPT_KEY = 'km_language_prompt_shown';
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
 const KN_TRANSLATIONS = {
   Home: 'ಮುಖಪುಟ',
@@ -958,7 +968,7 @@ function attachEvents() {
         renderAdminDashboard();
       }
       if (action === 'cancel-order') {
-        cancelOrder(actionButton.getAttribute('data-order-id'));
+        cancelOrder(actionButton.getAttribute('data-order-id'), actionButton);
       }
       if (action === 'share-order-tracking') {
         shareOrderTracking(actionButton.getAttribute('data-order-id'));
@@ -1362,9 +1372,6 @@ function showOrderSuccess(order) {
       ${order.invoice && order.invoice.sent
         ? `<p class="invoice-note invoice-note-ok">🧾 Your order list was sent to the store on WhatsApp</p>`
         : ''}
-      ${order.waLink
-        ? `<a class="primary-btn" style="display:block;text-align:center;margin:12px 0;" href="${escapeHtml(order.waLink)}" target="_blank" rel="noopener">📲 Send order list on WhatsApp</a>`
-        : ''}
       <div class="order-success-actions">
         <button class="secondary-btn" data-route="orders">View orders</button>
         <button class="primary-btn" data-route="home">Continue shopping</button>
@@ -1386,36 +1393,15 @@ function showOrderSuccess(order) {
   modal.querySelector('.primary-btn')?.focus();
 }
 
-function showWhatsappOrderPrompt(order) {
-  document.getElementById('order-success-modal')?.remove();
-  const app = document.getElementById('app');
-  if (!app) return;
-  const modal = document.createElement('div');
-  modal.id = 'order-success-modal';
-  modal.className = 'order-success-backdrop';
-  modal.setAttribute('role', 'dialog');
-  modal.setAttribute('aria-modal', 'true');
-  modal.setAttribute('aria-labelledby', 'whatsapp-order-prompt-title');
-  modal.innerHTML = `
-    <section class="order-success-modal">
-      <div class="success-check" aria-hidden="true">📲</div>
-      <h2 id="whatsapp-order-prompt-title">Send order list to admin WhatsApp?</h2>
-      <p>WhatsApp will open with your order details. Tap Send there, then return here to see your order confirmation.</p>
-      <div class="order-success-id">Order ${escapeHtml(order.id)}</div>
-      <a class="primary-btn" style="display:block;text-align:center;width:100%;" href="${escapeHtml(order.waLink)}" target="_top" data-action="send-order-whatsapp">Send order list on WhatsApp</a>
-    </section>
-  `;
-  app.appendChild(modal);
-  const sendLink = modal.querySelector('[data-action="send-order-whatsapp"]');
-  sendLink?.addEventListener('click', () => {
-    SS.setItem(WHATSAPP_RETURN_ORDER_KEY, JSON.stringify(order));
-  });
-  sendLink?.focus();
-  applyPreferredLanguage();
-}
-
 function resumeOrderSuccessAfterWhatsapp() {
   if (document.hidden) return;
+  const cancelledOrderId = SS.getItem(WHATSAPP_RETURN_CANCEL_KEY);
+  if (cancelledOrderId) {
+    SS.removeItem(WHATSAPP_RETURN_CANCEL_KEY);
+    showOrderCancelledPopup(cancelledOrderId);
+    return;
+  }
+
   const pendingOrder = SS.getItem(WHATSAPP_RETURN_ORDER_KEY);
   if (!pendingOrder) return;
 
@@ -1431,6 +1417,36 @@ function resumeOrderSuccessAfterWhatsapp() {
 
   SS.removeItem(WHATSAPP_RETURN_ORDER_KEY);
   showOrderSuccess(order);
+}
+
+function showOrderCancelledPopup(orderId) {
+  const app = document.getElementById('app');
+  if (!app) return;
+  setRoute('home');
+  document.getElementById('order-cancelled-modal')?.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'order-cancelled-modal';
+  modal.className = 'order-success-backdrop';
+  modal.setAttribute('role', 'alertdialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'order-cancelled-title');
+  modal.innerHTML = `
+    <section class="order-success-modal">
+      <h2 id="order-cancelled-title">Your order is cancelled</h2>
+      <div class="order-success-id">Order ${escapeHtml(orderId)}</div>
+      <div class="order-success-actions">
+        <button class="primary-btn" type="button" data-action="close-order-cancelled">OK</button>
+      </div>
+    </section>
+  `;
+  app.appendChild(modal);
+  modal.querySelector('[data-action="close-order-cancelled"]')?.addEventListener('click', () => {
+    modal.remove();
+    setRoute('home');
+  });
+  modal.querySelector('[data-action="close-order-cancelled"]')?.focus();
+  applyPreferredLanguage();
 }
 
 function closeOrderSuccess() {

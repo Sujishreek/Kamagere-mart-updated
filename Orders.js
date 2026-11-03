@@ -149,6 +149,34 @@ function placeOrder_(ctx) {
   return ok_({ message: 'Order placed successfully', order: result }, 201);
 }
 
+function notifyOrderWhatsapp_(ctx, m) {
+  var orderId = decodeURIComponent(m[1]);
+  var row = findOrder_(readTable_('Orders'), orderId);
+  if (!row) return fail_(404, 'Order not found.');
+
+  var token = String(ctx.body.trackingToken || '');
+  if (!/^[a-f0-9]{64}$/i.test(token) || !row.trackingTokenHash ||
+      !safeEqual_(sha256Hex_(token), row.trackingTokenHash)) {
+    return fail_(403, 'WhatsApp notification is unavailable for this order.');
+  }
+  if (!waConfigured_() || !adminWhatsappPhone_()) return ok_({ sent: false, configured: false });
+  if (row.invoiceStatus === 'Sent') return ok_({ sent: true, alreadySent: true });
+  if (row.invoiceStatus === 'Sending') return ok_({ sent: false, pending: true }, 202);
+  if (row.invoiceStatus && row.invoiceStatus !== 'Click-to-chat') {
+    return ok_({ sent: false, alreadyAttempted: true });
+  }
+
+  row.invoiceStatus = 'Sending';
+  updateRow_('Orders', row._row, row);
+  var order = normalizeOrder_(row);
+  var response = ok_({ sent: false });
+  response.after = function () {
+    deliverInvoice_(order, adminWhatsappPhone_());
+    response.body.sent = order.invoice.sent;
+  };
+  return response;
+}
+
 function trackOrder_(ctx, m) {
   var token = bearer_(ctx.authorization);
   if (!/^[a-f0-9]{64}$/i.test(token)) return fail_(401, 'A valid order tracking token is required.');
@@ -180,7 +208,23 @@ function cancelOrder_(ctx, m) {
   } catch (error) {
     console.error('Cancel Order Restock Error: ' + error);
   }
-  return ok_({ message: 'Order cancelled successfully.', status: 'Cancelled' });
+  var response = ok_({
+    message: 'Order cancelled successfully.',
+    status: 'Cancelled',
+    notificationSent: false
+  });
+  var phone = waConfigured_() ? adminWhatsappPhone_() : '';
+  if (phone) {
+    var cancelledOrder = normalizeOrder_(row);
+    response.after = function () {
+      var notificationStatus = sendWhatsappInvoice_(cancelledOrder, phone, 'cancelled');
+      response.body.notificationSent = notificationStatus === 'Sent';
+      if (notificationStatus !== 'Sent') {
+        response.body.notificationError = notificationStatus;
+      }
+    };
+  }
+  return response;
 }
 
 function adminCancelOrder_(ctx, m) {
