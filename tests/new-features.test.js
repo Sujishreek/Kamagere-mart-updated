@@ -66,6 +66,12 @@ function signup(c) {
 }
 const invoiceStatusOf = (c, id) => vm.runInContext(`readTable_('Orders').rows.filter(function(r){return r.id==='${id}'})[0].invoiceStatus`, c);
 
+t('admin WhatsApp default uses the configured store number', () => {
+  const b = boot({});
+  assert.equal(vm.runInContext('DEFAULT_ADMIN_WHATSAPP', b), '8197679897');
+  assert.equal(vm.runInContext('adminWhatsappPhone_()', b), '8197679897');
+});
+
 let portalContext = boot({});
 t('web entry serves separate customer and admin portal templates', () => {
   const templates = [];
@@ -152,7 +158,7 @@ t('web entry serves separate customer and admin portal templates', () => {
   const orderLinkBuilder = continuationScript.match(/function buildWhatsappOrderLink\(order, orderPayload\) \{[\s\S]*?\n\}/)?.[0];
   assert.ok(orderLinkBuilder, 'Expected WhatsApp order link builder');
   const orderLinkContext = vm.createContext({ Intl, Date, encodeURIComponent });
-  vm.runInContext(`const STORE_WHATSAPP_NUMBER = '919840250476'; ${orderLinkBuilder}; this.buildOrderLink = buildWhatsappOrderLink;`, orderLinkContext);
+  vm.runInContext(`const STORE_WHATSAPP_NUMBER = '918197679897'; ${orderLinkBuilder}; this.buildOrderLink = buildWhatsappOrderLink;`, orderLinkContext);
   const formattedOrderLink = orderLinkContext.buildOrderLink(
     { id: 'KM8071316', date: '01/11/2026, 12:57:51 pm' },
     {
@@ -167,6 +173,7 @@ t('web entry serves separate customer and admin portal templates', () => {
       subtotal: 525, delivery: 0, total: 525, payment: 'COD'
     }
   );
+  assert.equal(new URL(formattedOrderLink).pathname, '/918197679897');
   const formattedOrderMessage = decodeURIComponent(new URL(formattedOrderLink).searchParams.get('text'));
   assert.equal(formattedOrderMessage, [
     '🛒 Order ID: KM8071316',

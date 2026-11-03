@@ -5,7 +5,7 @@ store. After a successful cancellation, the customer gets the same kind of prefi
 the cancellation details. The customer must press **Send** in WhatsApp; click-to-chat cannot send
 messages without that confirmation.
 
-The store chat number is `919840250476` in `AppScriptContinuation.html` (`STORE_WHATSAPP_NUMBER`).
+The store chat number is `918197679897` in `AppScriptContinuation.html` (`STORE_WHATSAPP_NUMBER`).
 Update that constant if the store's WhatsApp number changes. The value includes the country code and
 must contain digits only.
 

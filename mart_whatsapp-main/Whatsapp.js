@@ -3,7 +3,7 @@
  *
  * Uses Meta's WhatsApp Business Cloud API (the official Meta service for sending WhatsApp
  * messages from a program). The order list goes to the ADMIN WhatsApp number
- * (ADMIN_WHATSAPP script property, default 9840250476) - never to the customer.
+ * (ADMIN_WHATSAPP script property, default 8197679897) - never to the customer.
  * The customer's name, phone and address are included in the message so the admin can deliver.
  *
  * Script Properties (Project Settings -> Script Properties):
@@ -11,7 +11,7 @@
  *   WA_ACCESS_TOKEN     permanent System User token (whatsapp_business_messaging permission)
  *   WA_TEMPLATE_NAME    approved template name, e.g. order_invoice   (see WHATSAPP_SETUP.md)
  *   WA_TEMPLATE_LANG    template language code, default "en"
- *   ADMIN_WHATSAPP     optional 10-digit admin number (default 9840250476)
+ *   ADMIN_WHATSAPP     optional 10-digit admin number (default 8197679897)
  *   WA_API_VERSION      Graph API version, default "v23.0"
  * If any of the first three is missing, nothing is sent and orders work exactly as before.
  */

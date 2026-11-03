@@ -107,7 +107,7 @@ t('web entry serves separate customer and admin portal templates', () => {
   const orderLinkBuilder = continuationScript.match(/function buildWhatsappOrderLink\(order, orderPayload\) \{[\s\S]*?\n\}/)?.[0];
   assert.ok(orderLinkBuilder, 'Expected WhatsApp order link builder');
   const orderLinkContext = vm.createContext({ Intl, Date, encodeURIComponent });
-  vm.runInContext(`const STORE_WHATSAPP_NUMBER = '919840250476'; ${orderLinkBuilder}; this.buildOrderLink = buildWhatsappOrderLink;`, orderLinkContext);
+  vm.runInContext(`const STORE_WHATSAPP_NUMBER = '918197679897'; ${orderLinkBuilder}; this.buildOrderLink = buildWhatsappOrderLink;`, orderLinkContext);
   const formattedOrderLink = orderLinkContext.buildOrderLink(
     { id: 'KM0912296', date: '30/10/2026, 10:51:52 pm' },
     {
@@ -121,6 +121,7 @@ t('web entry serves separate customer and admin portal templates', () => {
       subtotal: 392.87, delivery: 0, total: 392.87, payment: 'COD'
     }
   );
+  assert.equal(new URL(formattedOrderLink).pathname, '/918197679897');
   const formattedOrderMessage = decodeURIComponent(new URL(formattedOrderLink).searchParams.get('text'));
   assert.match(formattedOrderMessage, /^\S+ \*KAMAGERE MART\*\n\n📦 \*NEW ORDER\*\n\n🟣 \*ORDER DETAILS\*\nOrder ID: \*KM0912296\*\nDate: 30\/10\/2026, 10:51:52 pm/u);
   assert.match(formattedOrderMessage, /\*CUSTOMER DETAILS\*\nName: Meenakshi G\nPhone: \+91 98402 50476\nGoogle Maps: https:\/\/www\.google\.com\/maps\?q=13\.077600,80\.291700\nCoordinates: 13\.077600, 80\.291700/u);

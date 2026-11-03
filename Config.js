@@ -20,7 +20,7 @@ var PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])\S{8,}$/;
 var PHONE_REGEX = /^[6-9]\d{9}$/;
 // Orders are sent on WhatsApp to the ADMIN (store) number, not to the customer.
 // Can be overridden with the Script Property ADMIN_WHATSAPP (10 digits).
-var DEFAULT_ADMIN_WHATSAPP = '9840250476';
+var DEFAULT_ADMIN_WHATSAPP = '8197679897';
 var DEFAULT_ADMIN_EMAIL = 'Kamageremart04@gmail.com';
 
 function prop_(key) {
