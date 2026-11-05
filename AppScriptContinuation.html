@@ -726,6 +726,11 @@ async function loadProducts() {
   }
 }
 
+function notifyProductsChanged() {
+  LS.setItem(STOCK_REFRESH_KEY, `${Date.now()}-${Math.random()}`);
+  stockUpdateChannel?.postMessage({ type: 'products-updated' });
+}
+
 // Customer and admin credentials use separate login forms and API endpoints.
 async function handleLogin(form) {
   const payload = Object.fromEntries(new FormData(form).entries());
@@ -822,6 +827,7 @@ async function handleAddProduct(form) {
     }
 
     showToast(isEditing ? 'Product updated' : 'Product added to the store');
+    notifyProductsChanged();
     await renderAdminDashboard();
   } catch (error) {
     message.textContent = error.message || 'Unable to add product.';
@@ -867,6 +873,7 @@ async function handleDeleteProduct(productId) {
   try {
     await adminApi(`/api/products/${productId}`, { method: 'DELETE' });
     showToast('Product removed');
+    notifyProductsChanged();
     await refreshAfterProductChange();
   } catch (error) {
     if (error.message !== 'Admin session expired.') showToast(error.message || 'Unable to remove product.');
@@ -905,6 +912,7 @@ async function handleSaveCardDetails(productId, button) {
       body: JSON.stringify({ unit, stock })
     });
     showToast('Product updated');
+    notifyProductsChanged();
     await refreshAfterProductChange();
   } catch (error) {
     if (error.message !== 'Admin session expired.') showToast(error.message || 'Unable to update product.');
@@ -929,6 +937,7 @@ async function handleSetStock(productId, button) {
       body: JSON.stringify({ stock })
     });
     showToast('Stock updated');
+    notifyProductsChanged();
     await refreshAfterProductChange();
   } catch (error) {
     if (error.message !== 'Admin session expired.') showToast(error.message || 'Unable to update stock.');
@@ -942,6 +951,7 @@ async function handleRestoreDefaults() {
   try {
     const result = await adminApi('/api/admin/products/restore-defaults', { method: 'POST', body: '{}' });
     showToast(result.message || 'Products reloaded');
+    notifyProductsChanged();
     await renderAdminDashboard();
   } catch (error) {
     if (error.message !== 'Admin session expired.') showToast(error.message || 'Unable to restore products.');
@@ -1391,10 +1401,7 @@ async function handleCheckout(form) {
     placeOrderButton.disabled = true;
     placeOrderButton.textContent = 'Placing order...';
   }
-  let whatsappWindow = null;
-
   try {
-    whatsappWindow = window.open('about:blank', '_blank');
     const response = await fetch(`${API_BASE}/api/orders`, {
       method: 'POST',
       // the sign-in token links the order to your account (the WhatsApp order list goes to the admin)
@@ -1439,51 +1446,42 @@ async function handleCheckout(form) {
 
     LS.setItem(STOCK_REFRESH_KEY, `${Date.now()}-${Math.random()}`);
     stockUpdateChannel?.postMessage({ type: 'order-placed' });
-    const waLink = buildWhatsappOrderLink(order, orderPayload);
-    let notificationCompleted = false;
-    let notificationPending = false;
-    if (order.trackingToken) {
-      try {
+    let notification = order.invoice;
+    try {
+      if (!notification && order.trackingToken) {
         const notificationResponse = await fetch(`${API_BASE}/api/orders/${encodeURIComponent(order.id)}/notify-whatsapp`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ trackingToken: order.trackingToken })
         });
-        const notification = await notificationResponse.json();
-        if (notificationResponse.ok) {
-          notificationCompleted = !notification.pending;
-          notificationPending = Boolean(notification.pending);
-          order.invoice = notification;
-        } else {
-          console.error('WhatsApp order notification failed:', notification.message || notificationResponse.status);
+        notification = await notificationResponse.json();
+        if (!notificationResponse.ok) {
+          if (notificationResponse.status === 404 && notification.message === 'Not found.') {
+            throw new Error('The Apps Script deployment is outdated. Ask the administrator to deploy the latest version before placing another order.');
+          }
+          throw new Error(notification.message || 'WhatsApp could not confirm delivery of the order notification.');
         }
-      } catch (notificationError) {
-        console.error('Could not confirm WhatsApp order notification:', notificationError);
       }
+      if (notification?.sent !== true) {
+        throw new Error(notification?.message || 'WhatsApp could not confirm delivery of the order notification.');
+      }
+    } catch (notificationError) {
+      console.error('Could not confirm WhatsApp order notification:', notificationError);
+      if (placeOrderButton) {
+        placeOrderButton.disabled = true;
+        placeOrderButton.textContent = 'Order saved — WhatsApp failed';
+        placeOrderButton.classList.add('order-notification-failed');
+      }
+      const reason = notification?.error || notification?.message || notificationError.message;
+      showToast(`Order ${order.id} was saved, but the store was not notified on WhatsApp${reason ? `: ${reason}` : ''}. Please contact the store and do not place the order again.`);
+      loadProducts();
+      return;
     }
 
-    if (order.invoice?.sent || notificationPending) {
-      whatsappWindow?.close();
-      if (notificationPending) {
-        showToast('Your order is placed. Its WhatsApp notification is still processing.');
-      }
-    } else if (notificationCompleted || !order.trackingToken) {
-      if (whatsappWindow) {
-        whatsappWindow.location.href = waLink;
-      } else {
-        SS.setItem(WHATSAPP_RETURN_ORDER_KEY, JSON.stringify(order));
-        window.location.href = waLink;
-        return;
-      }
-    } else {
-      whatsappWindow?.close();
-      showToast('Your order is placed, but WhatsApp notification could not be confirmed.');
-    }
-
+    order.invoice = notification;
     showOrderSuccess(order);
     loadProducts();
   } catch (error) {
-    whatsappWindow?.close();
     form.dataset.submitting = 'false';
     if (placeOrderButton) {
       placeOrderButton.disabled = false;

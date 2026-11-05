@@ -2211,10 +2211,22 @@ img { max-width: 100%; }
 }
 .admin-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .admin-card-head .outline-btn { padding: 6px 12px; font-size: 0.82rem; }
-.admin-card-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.admin-card-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; min-width: 0; }
 .admin-card-fields label { display: grid; gap: 4px; font-size: 0.78rem; font-weight: 700; color: var(--muted); min-width: 0; }
-.admin-card-fields input { width: 100%; min-width: 0; padding: 8px 10px; font-size: 0.9rem; box-sizing: border-box; }
+.admin-card-fields input { display: block; width: 100%; max-width: 100%; min-width: 0; padding: 6px 8px; font-size: 0.9rem; box-sizing: border-box; }
 .admin-card-save { padding: 9px 12px; font-size: 0.85rem; width: 100%; }
+.primary-btn.order-notification-failed,
+.primary-btn.order-notification-failed:hover {
+  background: #b91c1c;
+  box-shadow: none;
+  cursor: not-allowed;
+  filter: none;
+  transform: none;
+}
+@media (max-width: 640px) {
+  .admin-card-fields { gap: 6px; }
+  .admin-card-fields input { padding: 6px 4px; font-size: 0.78rem; }
+}
 
 /* ===== Header title always on ONE line (phones included) ===== */
 .brand { min-width: 0; }

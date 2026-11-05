@@ -1,8 +1,9 @@
 # WhatsApp order notifications
 
-After checkout saves the order and clears the cart, the app sends the order invoice to the store
-through Meta's WhatsApp Business Cloud API when configured. Configure an approved message template
-and these Apps Script Script Properties to enable automatic delivery:
+After checkout saves the order and clears the cart, the app sends the complete order invoice to the
+store through Meta's WhatsApp Business Cloud API. The customer confirmation popup is shown only
+after the API confirms the message was sent. Configure an approved order template and these Apps
+Script Script Properties to enable delivery:
 
 - `WA_PHONE_NUMBER_ID`
 - `WA_ACCESS_TOKEN`
@@ -15,10 +16,14 @@ and these Apps Script Script Properties to enable automatic delivery:
 When an order is cancelled, the app uses the same template to send the cancellation status and
 order details before showing the customer the cancellation confirmation.
 
-If the Cloud API is not configured or delivery fails, checkout or cancellation opens WhatsApp with
-the relevant order details prefilled for the store. The customer must press **Send** in that
-fallback; click-to-chat cannot send messages without that confirmation. The fallback number is
-`918197679897` in `AppScriptContinuation.html` (`STORE_WHATSAPP_NUMBER`).
+If the Cloud API is not configured or delivery fails, the order remains saved, but the customer
+does not see the order-success popup. The page displays a notice to contact the store and not place
+the order again, including the returned configuration or Meta API error when available. Check Apps
+Script execution logs and the `Orders` sheet's `invoiceStatus` value when diagnosing a failed send;
+the approved template name and its seven body variables must match the order invoice template.
+
+Cancellation keeps its existing behavior: it sends the cancellation notification before showing
+the cancellation confirmation, and opens a prefilled WhatsApp chat if automatic delivery fails.
 
 To publish changes, deploy a new version of the Google Apps Script web app. For the static Netlify
 build, set `KM_API_URL` to that web app's HTTPS `/exec` URL and run `node build-netlify.mjs`.

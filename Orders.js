@@ -146,7 +146,20 @@ function placeOrder_(ctx) {
     var upi = upiConfig_();
     result.upi = { id: upi.id, name: upi.name, link: buildUpiLink_(orderId, result.total) };
   }
-  return ok_({ message: 'Order placed successfully', order: result }, 201);
+  var response = ok_({ message: 'Order placed successfully', order: result }, 201);
+  response.after = function () {
+    var phone = waConfigured_() ? adminWhatsappPhone_() : '';
+    if (!phone) {
+      result.invoice = {
+        sent: false,
+        configured: false,
+        error: 'WhatsApp is not configured. Set WA_PHONE_NUMBER_ID, WA_ACCESS_TOKEN, WA_TEMPLATE_NAME, and a valid ADMIN_WHATSAPP.'
+      };
+      return;
+    }
+    deliverInvoice_(result, phone);
+  };
+  return response;
 }
 
 function notifyOrderWhatsapp_(ctx, m) {
@@ -159,11 +172,17 @@ function notifyOrderWhatsapp_(ctx, m) {
       !safeEqual_(sha256Hex_(token), row.trackingTokenHash)) {
     return fail_(403, 'WhatsApp notification is unavailable for this order.');
   }
-  if (!waConfigured_() || !adminWhatsappPhone_()) return ok_({ sent: false, configured: false });
+  if (!waConfigured_() || !adminWhatsappPhone_()) {
+    return fail_(503, 'Automatic WhatsApp order notifications are not configured.');
+  }
   if (row.invoiceStatus === 'Sent') return ok_({ sent: true, alreadySent: true });
   if (row.invoiceStatus === 'Sending') return ok_({ sent: false, pending: true }, 202);
   if (row.invoiceStatus && row.invoiceStatus !== 'Click-to-chat') {
-    return ok_({ sent: false, alreadyAttempted: true });
+    return ok_({
+      sent: false,
+      alreadyAttempted: true,
+      error: row.invoiceStatus.indexOf('Failed:') === 0 ? row.invoiceStatus : ''
+    });
   }
 
   row.invoiceStatus = 'Sending';
@@ -173,6 +192,11 @@ function notifyOrderWhatsapp_(ctx, m) {
   response.after = function () {
     deliverInvoice_(order, adminWhatsappPhone_());
     response.body.sent = order.invoice.sent;
+    if (!order.invoice.sent) {
+      response.status = 502;
+      response.body.message = order.invoice.error || 'WhatsApp could not confirm delivery of the order notification.';
+      response.body.error = order.invoice.error || '';
+    }
   };
   return response;
 }

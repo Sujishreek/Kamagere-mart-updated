@@ -221,13 +221,26 @@ t('web entry serves separate customer and admin portal templates', () => {
   assert.match(messyOrderMessage, /1\. Sugar \(1 kg\) x1 = ₹47\.87/u);
   assert.match(messyOrderMessage, /Total: ₹72\.87 \(COD\)/u);
   assert.match(continuationScript, /if \(form\.dataset\.submitting === 'true'\) return;/);
-  assert.match(continuationScript, /whatsappWindow = window\.open\('about:blank', '_blank'\);/);
+  assert.doesNotMatch(continuationScript.slice(
+    continuationScript.indexOf('async function handleCheckout'),
+    continuationScript.indexOf('function addToCart')
+  ), /window\.open\('about:blank'/);
   assert.ok(continuationScript.includes("return 'https:' + '/' + '/wa.me/'"));
   assert.ok(continuationScript.indexOf("LS.removeItem(CART_KEY)") < continuationScript.indexOf("/notify-whatsapp"));
   assert.ok(continuationScript.indexOf("saveOrders(existingOrders, state.user)") < continuationScript.indexOf("/notify-whatsapp"));
   assert.match(continuationScript, /\/api\/orders\/\$\{encodeURIComponent\(order\.id\)\}\/notify-whatsapp/);
-  assert.match(continuationScript, /if \(order\.invoice\?\.sent \|\| notificationPending\) \{\s*whatsappWindow\?\.close\(\);/);
-  assert.match(continuationScript, /showOrderSuccess\(order\);/);
+  const checkoutNotificationFlow = continuationScript.slice(
+    continuationScript.indexOf('async function handleCheckout'),
+    continuationScript.indexOf('function addToCart')
+  );
+  assert.match(checkoutNotificationFlow, /if \(notification\?\.sent !== true\)/);
+  assert.ok(checkoutNotificationFlow.indexOf('notification.sent !== true') < checkoutNotificationFlow.indexOf('showOrderSuccess(order)'));
+  assert.match(checkoutNotificationFlow, /notificationResponse\.status === 404 && notification\.message === 'Not found\.'/);
+  assert.match(checkoutNotificationFlow, /The Apps Script deployment is outdated/);
+  assert.match(checkoutNotificationFlow, /notification\?\.error \|\| notification\?\.message \|\| notificationError\.message/);
+  assert.match(checkoutNotificationFlow, /Order \$\{order\.id\} was saved, but the store was not notified on WhatsApp/);
+  assert.doesNotMatch(checkoutNotificationFlow, /window\.location\.href = waLink/);
+  assert.match(checkoutNotificationFlow, /showOrderSuccess\(order\);/);
   assert.doesNotMatch(continuationScript, /showWhatsappOrderPrompt/);
   assert.doesNotMatch(appScript, /function showWhatsappOrderPrompt|Send order list to admin WhatsApp\?|Send order list on WhatsApp/);
   assert.match(appScript, /function showOrderSuccess\(order\)[\s\S]*?Thanks for placing your order!/);
@@ -256,7 +269,9 @@ t('web entry serves separate customer and admin portal templates', () => {
   assert.match(continuationScript, /const hasUnsavedStockEdit = input && previousProduct &&\s*Number\(input\.value\) !== getStock\(previousProduct\);\s*if \(input && !hasUnsavedStockEdit\) input\.value = getStock\(product\);/);
   assert.match(continuationScript, /fetch\(`\$\{API_BASE\}\/api\/products\?stockRefresh=\$\{Date\.now\(\)\}`\)/);
   assert.match(appScript, /stockUpdateChannel\?\.addEventListener\('message'/);
-  assert.match(appScript, /else if \(!IS_ADMIN_PORTAL && event\.data\?\.type === 'order-placed' &&\s*\['home', 'cart'\]\.includes\(state\.route\)\) \{\s*loadProducts\(\);/);
+  assert.match(appScript, /else if \(!IS_ADMIN_PORTAL && \['order-placed', 'products-updated'\]\.includes\(event\.data\?\.type\) &&\s*\['home', 'cart'\]\.includes\(state\.route\)\) \{\s*loadProducts\(\);/);
+  assert.match(continuationScript, /function notifyProductsChanged\(\) \{\s*LS\.setItem\(STOCK_REFRESH_KEY, `\$\{Date\.now\(\)\}-\$\{Math\.random\(\)\}`\);\s*stockUpdateChannel\?\.postMessage\(\{ type: 'products-updated' \}\);\s*\}/);
+  assert.equal((continuationScript.match(/notifyProductsChanged\(\);/g) || []).length, 5);
   assert.match(continuationScript, /stockUpdateChannel\?\.postMessage\(\{ type: 'order-placed' \}\)/);
   assert.match(appScript, /if \(IS_ADMIN_PORTAL && !isAdminSession\(\) &&\s*\['auth', 'profile'\]\.includes\(target\)\) \{\s*setRoute\('admin-login'\);/);
   assert.match(appScript, /authMarkup\(IS_ADMIN_PORTAL \? 'admin-login' : panel\)/);
@@ -456,14 +471,17 @@ t('UPI order rejected when UPI is not configured', () => { const r = c.call('POS
 t('unknown payment method rejected', () => { assert.equal(c.call('POST', '/api/orders', order({ payment: 'PAYPAL' })).status, 400); });
 t('COD order uses click-to-chat status without automatic WhatsApp send', () => {
   const r = c.call('POST', '/api/orders', order()); assert.equal(r.status, 201); assert.equal(r.body.order.payment, 'COD');
+  assert.equal(r.body.order.invoice.sent, false);
+  assert.equal(r.body.order.invoice.configured, false);
+  assert.match(r.body.order.invoice.error, /WA_PHONE_NUMBER_ID/);
   assert.equal(invoiceStatusOf(c, r.body.order.id), 'Click-to-chat'); assert.equal(c.fetched.length, 0);
   const invalid = c.call('POST', '/api/orders/' + r.body.order.id + '/notify-whatsapp', { trackingToken: 'invalid' });
   assert.equal(invalid.status, 403);
   const fallback = c.call('POST', '/api/orders/' + r.body.order.id + '/notify-whatsapp', {
     trackingToken: r.body.order.trackingToken
   });
-  assert.equal(fallback.body.sent, false);
-  assert.equal(fallback.body.configured, false);
+  assert.equal(fallback.status, 503);
+  assert.match(fallback.body.message, /not configured/);
   assert.equal(c.fetched.length, 0);
 });
 t('bad UPI_ID is ignored', () => { const b = boot({ UPI_ID: 'not a upi id' }); assert.equal(b.call('GET', '/api/payment-config').body.upiEnabled, false); });
@@ -483,17 +501,22 @@ let token = signup(c);
 t('order placement sends exactly one admin WhatsApp invoice through the Cloud API', () => {
   const placed = c.call('POST', '/api/orders', order({ customerPhone: '9000000000' }), token);
   assert.equal(placed.status, 201);
-  assert.equal(c.fetched.length, 0);
-  assert.equal(invoiceStatusOf(c, placed.body.order.id), 'Click-to-chat');
+  assert.equal(c.fetched.length, 1);
+  assert.equal(placed.body.order.invoice.sent, true);
+  assert.equal(invoiceStatusOf(c, placed.body.order.id), 'Sent');
   const r = c.call('POST', '/api/orders/' + placed.body.order.id + '/notify-whatsapp', {
     trackingToken: placed.body.order.trackingToken
   });
   assert.equal(r.status, 200);
   assert.equal(c.fetched.length, 1);
   assert.equal(r.body.sent, true);
+  assert.equal(r.body.alreadySent, true);
   assert.equal(c.fetched[0].payload.to, '918197679897');
-  assert.match(c.fetched[0].payload.template.components[0].parameters[3].text, /Aashirvaad Atta/u);
-  assert.equal(invoiceStatusOf(c, placed.body.order.id), 'Sent');
+  const invoiceParameters = c.fetched[0].payload.template.components[0].parameters;
+  assert.match(invoiceParameters[0].text, /Meena \| Ph: 9000000000 \| 12 MG Road/u);
+  assert.equal(invoiceParameters[1].text, placed.body.order.id);
+  assert.match(invoiceParameters[3].text, /Aashirvaad Atta/u);
+  assert.equal(invoiceParameters[6].text, 'Cash on Delivery');
   const duplicate = c.call('POST', '/api/orders/' + placed.body.order.id + '/notify-whatsapp', {
     trackingToken: placed.body.order.trackingToken
   });
@@ -501,22 +524,29 @@ t('order placement sends exactly one admin WhatsApp invoice through the Cloud AP
   assert.equal(c.fetched.length, 1);
 });
 t('guest order placement also sends one admin WhatsApp invoice when configured', () => {
+  const previousFetchCount = c.fetched.length;
   const placed = c.call('POST', '/api/orders', order()); assert.equal(placed.status, 201);
-  assert.equal(c.fetched.length, 1);
+  assert.equal(placed.body.order.invoice.sent, true);
+  assert.equal(c.fetched.length, previousFetchCount + 1);
   const r = c.call('POST', '/api/orders/' + placed.body.order.id + '/notify-whatsapp', {
     trackingToken: placed.body.order.trackingToken
   });
   assert.equal(r.body.sent, true);
-  assert.equal(c.fetched.length, 2);
+  assert.equal(c.fetched.length, previousFetchCount + 1);
   assert.equal(invoiceStatusOf(c, placed.body.order.id), 'Sent');
 });
 t('a failed WhatsApp attempt is not automatically sent a second time', () => {
   const b = boot(WA);
   b.fetchResult = { code: 500, body: '{"error":{"message":"template rejected"}}' };
   const placed = b.call('POST', '/api/orders', order());
+  assert.equal(placed.body.order.invoice.sent, false);
+  assert.match(placed.body.order.invoice.error, /HTTP 500 template rejected/);
+  assert.equal(b.fetched.length, 1);
   const path = '/api/orders/' + placed.body.order.id + '/notify-whatsapp';
   const first = b.call('POST', path, { trackingToken: placed.body.order.trackingToken });
   assert.equal(first.body.sent, false);
+  assert.equal(first.body.alreadyAttempted, true);
+  assert.match(first.body.error, /HTTP 500 template rejected/);
   assert.equal(b.fetched.length, 1);
   const second = b.call('POST', path, { trackingToken: placed.body.order.trackingToken });
   assert.equal(second.body.alreadyAttempted, true);
@@ -525,16 +555,17 @@ t('a failed WhatsApp attempt is not automatically sent a second time', () => {
 t('customer cancellation sends one cancelled order message to admin before the success response', () => {
   const b = boot({ ...WA, WA_CANCELLATION_TEMPLATE_NAME: 'order_cancelled' });
   const placed = b.call('POST', '/api/orders', order({ items: [{ id: 1, quantity: 1 }] }));
+  assert.equal(placed.body.order.invoice.sent, true);
   const cancellation = b.call('PATCH', '/api/orders/' + placed.body.order.id + '/cancel', {
     cancelToken: placed.body.order.cancelToken
   });
   assert.equal(cancellation.status, 200);
   assert.equal(cancellation.body.status, 'Cancelled');
   assert.equal(cancellation.body.notificationSent, true);
-  assert.equal(b.fetched.length, 1);
-  assert.equal(b.fetched[0].payload.to, '918197679897');
-  assert.equal(b.fetched[0].payload.template.name, 'order_cancelled');
-  const parameters = b.fetched[0].payload.template.components[0].parameters;
+  assert.equal(b.fetched.length, 2);
+  assert.equal(b.fetched[1].payload.to, '918197679897');
+  assert.equal(b.fetched[1].payload.template.name, 'order_cancelled');
+  const parameters = b.fetched[1].payload.template.components[0].parameters;
   assert.match(parameters[0].text, /^ORDER CANCELLED/u);
   assert.match(parameters[1].text, /CANCELLED - /u);
   assert.match(parameters[3].text, /Aashirvaad Atta/u);

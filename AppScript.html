@@ -1151,10 +1151,10 @@ function attachEvents() {
   });
 
   stockUpdateChannel?.addEventListener('message', (event) => {
-    if (IS_ADMIN_PORTAL && event.data?.type === 'order-placed' &&
+    if (IS_ADMIN_PORTAL && ['order-placed', 'products-updated'].includes(event.data?.type) &&
         ['admin', 'orders'].includes(state.route)) {
       refreshAdminStock();
-    } else if (!IS_ADMIN_PORTAL && event.data?.type === 'order-placed' &&
+    } else if (!IS_ADMIN_PORTAL && ['order-placed', 'products-updated'].includes(event.data?.type) &&
         ['home', 'cart'].includes(state.route)) {
       loadProducts();
     }

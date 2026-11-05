@@ -46,6 +46,9 @@ function invoiceParameters_(order) {
   var items = (order.items || []).map(function (it) {
     return it.name + ' (' + it.unit + ') x ' + it.quantity + ' = Rs.' + money_(it.price * it.quantity);
   }).join(', ');
+  if (items.length > 900) {
+    throw new Error('Order item summary exceeds the WhatsApp template limit.');
+  }
   var payment = order.payment === 'UPI' ? 'UPI' : 'Cash on Delivery';
   return [
     // first template variable carries who ordered + how to reach / deliver to them
@@ -110,6 +113,7 @@ function sendWhatsappInvoice_(order, phone, messageType) {
 function deliverInvoice_(order, phone) {
   var status = sendWhatsappInvoice_(order, phone);
   order.invoice = { sent: status === 'Sent', phone: maskPhone_(phone) };
+  if (status !== 'Sent') order.invoice.error = status;
   try {
     withLock_(function () {
       var row = findOrder_(readTable_('Orders'), order.id);
