@@ -16,11 +16,12 @@ Script Script Properties to enable delivery:
 When an order is cancelled, the app uses the same template to send the cancellation status and
 order details before showing the customer the cancellation confirmation.
 
-If the Cloud API is not configured or delivery fails, the order remains saved, but the customer
-does not see the order-success popup. The page displays a notice to contact the store and not place
-the order again, including the returned configuration or Meta API error when available. Check Apps
-Script execution logs and the `Orders` sheet's `invoiceStatus` value when diagnosing a failed send;
-the approved template name and its seven body variables must match the order invoice template.
+If the Cloud API is not configured or delivery fails, checkout opens a prefilled WhatsApp message
+after saving the order and clearing the cart. The customer must tap **Send** in WhatsApp; the
+order confirmation popup then appears in the storefront. If popups are blocked, WhatsApp opens in
+the current tab and the order confirmation is restored when the customer returns. Check Apps Script
+execution logs and the `Orders` sheet's `invoiceStatus` value when diagnosing a failed send; the
+approved template name and its seven body variables must match the order invoice template.
 
 Cancellation keeps its existing behavior: it sends the cancellation notification before showing
 the cancellation confirmation, and opens a prefilled WhatsApp chat if automatic delivery fails.

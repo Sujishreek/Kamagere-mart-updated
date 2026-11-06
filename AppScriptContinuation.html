@@ -1401,7 +1401,9 @@ async function handleCheckout(form) {
     placeOrderButton.disabled = true;
     placeOrderButton.textContent = 'Placing order...';
   }
+  let whatsappWindow = null;
   try {
+    whatsappWindow = window.open('about:blank', '_blank');
     const response = await fetch(`${API_BASE}/api/orders`, {
       method: 'POST',
       // the sign-in token links the order to your account (the WhatsApp order list goes to the admin)
@@ -1446,9 +1448,10 @@ async function handleCheckout(form) {
 
     LS.setItem(STOCK_REFRESH_KEY, `${Date.now()}-${Math.random()}`);
     stockUpdateChannel?.postMessage({ type: 'order-placed' });
-    let notification = order.invoice;
+    let notification = null;
+    let notificationFailure = '';
     try {
-      if (!notification && order.trackingToken) {
+      if (order.trackingToken) {
         const notificationResponse = await fetch(`${API_BASE}/api/orders/${encodeURIComponent(order.id)}/notify-whatsapp`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1457,31 +1460,38 @@ async function handleCheckout(form) {
         notification = await notificationResponse.json();
         if (!notificationResponse.ok) {
           if (notificationResponse.status === 404 && notification.message === 'Not found.') {
-            throw new Error('The Apps Script deployment is outdated. Ask the administrator to deploy the latest version before placing another order.');
+            notificationFailure = 'The Apps Script deployment is outdated.';
+          } else {
+            notificationFailure = notification.message || 'WhatsApp could not confirm delivery of the order notification.';
           }
-          throw new Error(notification.message || 'WhatsApp could not confirm delivery of the order notification.');
         }
-      }
-      if (notification?.sent !== true) {
-        throw new Error(notification?.message || 'WhatsApp could not confirm delivery of the order notification.');
       }
     } catch (notificationError) {
       console.error('Could not confirm WhatsApp order notification:', notificationError);
-      if (placeOrderButton) {
-        placeOrderButton.disabled = true;
-        placeOrderButton.textContent = 'Order saved — WhatsApp failed';
-        placeOrderButton.classList.add('order-notification-failed');
-      }
-      const reason = notification?.error || notification?.message || notificationError.message;
-      showToast(`Order ${order.id} was saved, but the store was not notified on WhatsApp${reason ? `: ${reason}` : ''}. Please contact the store and do not place the order again.`);
-      loadProducts();
-      return;
+      notificationFailure = notificationError.message || 'WhatsApp notification failed.';
     }
 
-    order.invoice = notification;
+    if (notification?.sent === true || notification?.pending) {
+      whatsappWindow?.close();
+      order.invoice = notification;
+    } else {
+      const waLink = buildWhatsappOrderLink(order, orderPayload);
+      if (whatsappWindow) {
+        whatsappWindow.location.href = waLink;
+      } else {
+        SS.setItem(WHATSAPP_RETURN_ORDER_KEY, JSON.stringify(order));
+        window.location.href = waLink;
+        return;
+      }
+      showToast(notificationFailure
+        ? `Order saved. WhatsApp did not confirm delivery (${notificationFailure}); send the prepared message if needed.`
+        : 'Order saved. Send the prepared WhatsApp message to notify the store.');
+    }
+
     showOrderSuccess(order);
     loadProducts();
   } catch (error) {
+    whatsappWindow?.close();
     form.dataset.submitting = 'false';
     if (placeOrderButton) {
       placeOrderButton.disabled = false;

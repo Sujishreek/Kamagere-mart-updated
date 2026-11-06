@@ -146,20 +146,7 @@ function placeOrder_(ctx) {
     var upi = upiConfig_();
     result.upi = { id: upi.id, name: upi.name, link: buildUpiLink_(orderId, result.total) };
   }
-  var response = ok_({ message: 'Order placed successfully', order: result }, 201);
-  response.after = function () {
-    var phone = waConfigured_() ? adminWhatsappPhone_() : '';
-    if (!phone) {
-      result.invoice = {
-        sent: false,
-        configured: false,
-        error: 'WhatsApp is not configured. Set WA_PHONE_NUMBER_ID, WA_ACCESS_TOKEN, WA_TEMPLATE_NAME, and a valid ADMIN_WHATSAPP.'
-      };
-      return;
-    }
-    deliverInvoice_(result, phone);
-  };
-  return response;
+  return ok_({ message: 'Order placed successfully', order: result }, 201);
 }
 
 function notifyOrderWhatsapp_(ctx, m) {
